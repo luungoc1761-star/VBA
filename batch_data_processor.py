@@ -4,6 +4,7 @@
 ================================================================================
 SCRIPT 1: BATCH DATA PROCESSOR (LỌC & TÍNH TOÁN DỮ LIỆU CẤN TRỪ TỒN KHO)
 ================================================================================
+Phiên bản: Pure Python + openpyxl (KHÔNG CẦN PANDAS, KHÔNG CẦN EXCEL, CHẠY CỰC NHẸ)
 Nhiệm vụ:
   1. Đọc file nguồn 'Stock Balance With Batch.xlsx'.
   2. Lọc các dòng âm tại Kho 50 và Kho 62.
@@ -22,7 +23,7 @@ import sys
 import os
 import json
 from datetime import datetime
-import pandas as pd
+
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -30,113 +31,161 @@ from openpyxl.utils import get_column_letter
 def log(msg):
     print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
+def format_excel_sheet(ws, header_color="1F4E78"):
+    """Định dạng bảng tính Excel đẹp mắt với màu tiêu đề và căn lề"""
+    header_fill = PatternFill(start_color=header_color, end_color=header_color, fill_type="solid")
+    header_font = Font(name="Segoe UI", size=10, bold=True, color="FFFFFF")
+    data_font = Font(name="Segoe UI", size=9)
+    
+    thin_border = Border(
+        left=Side(style='thin', color='D9D9D9'),
+        right=Side(style='thin', color='D9D9D9'),
+        top=Side(style='thin', color='D9D9D9'),
+        bottom=Side(style='thin', color='D9D9D9')
+    )
+    
+    for row_idx, row in enumerate(ws.iter_rows(), 1):
+        for cell in row:
+            cell.border = thin_border
+            if row_idx == 1:
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            else:
+                cell.font = data_font
+                if isinstance(cell.value, (int, float)):
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                    if isinstance(cell.value, int):
+                        cell.number_format = '#,##0'
+                else:
+                    cell.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Tự động điều chỉnh độ rộng cột
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            max_len = max(max_len, len(val_str))
+        ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
 def process_stock_data(input_file="Stock Balance With Batch.xlsx"):
     log(f"Bắt đầu xử lý file dữ liệu: {input_file}")
     if not os.path.exists(input_file):
         log(f"LỖI: Không tìm thấy file '{input_file}'. Vui lòng kiểm tra lại đường dẫn.")
         return False
 
-    # 1. Đọc dữ liệu từ file Excel (bỏ 4 dòng tiêu đề đầu)
+    # 1. Đọc dữ liệu từ file Excel
     log("Đang đọc và phân tích cấu trúc bảng tính...")
     try:
-        df = pd.read_excel(input_file, skiprows=4)
+        wb = openpyxl.load_workbook(input_file, data_only=True, read_only=True)
+        ws = wb.active
     except Exception as e:
-        log(f"Lỗi khi đọc file Excel: {e}")
+        log(f"Lỗi khi mở file Excel: {e}")
         return False
 
-    # Chuẩn hóa tên cột
-    df.columns = [str(c).strip() for c in df.columns]
-    
-    # Kiểm tra các cột bắt buộc
-    required_cols = ['Stock Code', 'Warehouse', 'BATCH', 'Qty']
-    for col in required_cols:
-        if col not in df.columns:
-            log(f"LỖI: Thiếu cột bắt buộc '{col}' trong file nguồn!")
-            return False
+    neg_dict = {}  # (stock_code, target_wh) -> total_negative_qty
+    pos_dict = {}  # stock_code -> list of {'batch', 'wh', 'qty', 'bin'}
+    neg_count = 0
+    pos_count = 0
+    neg_total_sum = 0
+    pos_total_sum = 0
 
-    # Chuẩn hóa kiểu dữ liệu
-    df['Stock Code'] = df['Stock Code'].astype(str).str.strip()
-    df['Warehouse'] = df['Warehouse'].astype(str).str.strip().replace({'1': '01', '1.0': '01'})
-    df['BATCH'] = df['BATCH'].astype(str).str.strip()
-    df['BIN'] = df['BIN'].fillna('').astype(str).str.strip() if 'BIN' in df.columns else ''
-    df['Qty_num'] = pd.to_numeric(df['Qty'], errors='coerce').fillna(0)
-    if 'CREATEDATE' in df.columns:
-        df['CREATEDATE'] = pd.to_datetime(df['CREATEDATE'], errors='coerce')
+    # Duyệt từng dòng dữ liệu (bỏ 5 dòng đầu là header tiêu đề báo cáo)
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i < 5:
+            continue
+        
+        sc = str(row[0] or '').strip()
+        wh = str(row[1] or '').strip()
+        if wh in ['1', '1.0']:
+            wh = '01'
+        batch = str(row[4] or '').strip()
+        bin_val = str(row[5] or '').strip()
+        raw_qty = row[6]
 
-    # 2. Phân loại nhóm Âm và Dương theo quy tắc nghiệp vụ
-    # Nhóm Âm: Kho 50 và Kho 62, Qty < 0
-    neg_mask = (df['Qty_num'] < 0) & (df['Warehouse'].isin(['50', '62']))
-    neg_df = df[neg_mask].copy()
+        if not sc or raw_qty is None:
+            continue
 
-    # Nhóm Dương: Kho 61 và Kho 01, Qty > 0
-    pos_mask = (df['Qty_num'] > 0) & (df['Warehouse'].isin(['61', '01']))
-    pos_df = df[pos_mask].copy()
+        try:
+            qty = float(raw_qty)
+        except:
+            continue
 
-    log(f"-> Tổng số dòng âm (Kho 50 & 62): {len(neg_df):,} dòng | Tổng số lượng âm: {abs(neg_df['Qty_num'].sum()):,.0f}")
-    log(f"-> Tổng số dòng dương khả dụng (Kho 61 & 01): {len(pos_df):,} dòng | Tổng tồn dương: {pos_df['Qty_num'].sum():,.0f}")
+        # 2. Phân loại nhóm Âm và Dương theo quy tắc nghiệp vụ
+        # Nhóm Âm: Kho 50 và Kho 62, Qty < 0
+        if qty < 0 and wh in ['50', '62']:
+            neg_count += 1
+            neg_total_sum += abs(qty)
+            key = (sc, wh)
+            neg_dict[key] = neg_dict.get(key, 0.0) + abs(qty)
 
-    # 3. Gom nhóm theo Stock Code và Target Warehouse
-    neg_grouped = neg_df.groupby(['Stock Code', 'Warehouse'])['Qty_num'].sum().reset_index()
-    neg_grouped = neg_grouped.sort_values(by=['Stock Code', 'Warehouse'])
+        # Nhóm Dương: Kho 61 và Kho 01, Qty > 0
+        elif qty > 0 and wh in ['61', '01']:
+            pos_count += 1
+            pos_total_sum += qty
+            if sc not in pos_dict:
+                pos_dict[sc] = []
+            pos_dict[sc].append({
+                'batch': batch,
+                'wh': wh,
+                'qty': int(qty),
+                'bin': bin_val or '01'
+            })
 
-    available_pos = pos_df.copy()
+    log(f"-> Tổng số dòng âm (Kho 50 & 62): {neg_count:,} dòng | Tổng số lượng âm: {neg_total_sum:,.0f}")
+    log(f"-> Tổng số dòng dương khả dụng (Kho 61 & 01): {pos_count:,} dòng | Tổng tồn dương: {pos_total_sum:,.0f}")
+
+    # 3. Gom nhóm và thực hiện thuật toán cấn trừ (Smallest Batch First, No Partial Splitting)
     queue_actions = []
     skipped_records = []
-    
     step_counter = 1
 
-    for _, neg_row in neg_grouped.iterrows():
-        sc = neg_row['Stock Code']
-        target_wh = neg_row['Warehouse']  # '50' hoặc '62'
-        target_qty = abs(neg_row['Qty_num'])
-
-        # Lấy các batch dương của Stock Code này trong Kho 61 và 01
-        cand_pos = available_pos[available_pos['Stock Code'] == sc].sort_values(by='Qty_num', ascending=True)
+    for (sc, target_wh) in sorted(neg_dict.keys()):
+        target_qty = int(neg_dict[(sc, target_wh)])
+        # Sắp xếp các batch dương theo số lượng nhỏ nhất trước
+        cand_pos = sorted(pos_dict.get(sc, []), key=lambda x: x['qty'])
 
         cur_sum = 0
-        allocated_batches = []
+        used_indices = []
 
-        for _, pos_row in cand_pos.iterrows():
-            b_qty = pos_row['Qty_num']
-            b_name = pos_row['BATCH']
-            source_wh = pos_row['Warehouse']
-
+        for idx, p_item in enumerate(cand_pos):
+            b_qty = p_item['qty']
             if cur_sum + b_qty <= target_qty:
-                # Lấy trọn vẹn batch này
                 cur_sum += b_qty
-                allocated_batches.append({
+                used_indices.append(idx)
+                queue_actions.append({
                     "step": step_counter,
                     "stock_code": sc,
                     "target_warehouse": target_wh,
-                    "batch": b_name,
-                    "source_warehouse": source_wh,
-                    "qty": int(b_qty),
+                    "batch": p_item['batch'],
+                    "source_warehouse": p_item['wh'],
+                    "qty": b_qty,
                     "bin": "01",
                     "status": "READY"
                 })
                 step_counter += 1
-                # Xóa batch này khỏi kho khả dụng để không bị dùng trùng
-                available_pos = available_pos[available_pos['BATCH'] != b_name]
             else:
                 # Nếu lấy batch này sẽ bị vượt số âm (cần tách lẻ) -> Theo quy tắc: TẠM BỎ QUA
                 pass
 
-        queue_actions.extend(allocated_batches)
-        rem_missing = target_qty - cur_sum
+        # Cập nhật danh sách batch còn lại của stock code này
+        pos_dict[sc] = [item for i_pos, item in enumerate(cand_pos) if i_pos not in used_indices]
 
+        rem_missing = target_qty - cur_sum
         if rem_missing > 0:
             skipped_records.append({
-                "Stock Code": sc,
-                "Kho Bị Âm": target_wh,
-                "Tổng Số Lượng Âm": int(target_qty),
-                "Đã Bù Trọn Vẹn": int(cur_sum),
-                "Còn Thiếu (Chờ Tách Lẻ/Nhập Thêm)": int(rem_missing),
-                "Tỷ Lệ Bù (%)": round(cur_sum / target_qty * 100, 1) if target_qty > 0 else 0,
-                "Lý Do": "Các lô dương còn lại có số lượng lớn hơn phần thiếu (Cần tách lẻ) hoặc hết tồn"
+                "stock_code": sc,
+                "target_wh": target_wh,
+                "total_neg": target_qty,
+                "offset_done": cur_sum,
+                "remaining": rem_missing,
+                "ratio": round(cur_sum / target_qty * 100, 1) if target_qty > 0 else 0,
+                "reason": "Các lô dương còn lại có số lượng lớn hơn phần thiếu (Cần tách lẻ) hoặc hết tồn"
             })
 
     total_offset_qty = sum(a['qty'] for a in queue_actions)
-    total_neg_qty = abs(neg_df['Qty_num'].sum())
+    total_neg_qty = int(neg_total_sum)
 
     log(f"-> Đã tạo thành công: {len(queue_actions)} lượt nhập liệu hợp lệ")
     log(f"-> Tổng số lượng giải quyết ngay: {total_offset_qty:,.0f} / {total_neg_qty:,.0f} ({total_offset_qty/total_neg_qty*100:.1f}%)")
@@ -158,66 +207,68 @@ def process_stock_data(input_file="Stock Balance With Batch.xlsx"):
         json.dump(output_json, f, ensure_ascii=False, indent=2)
     log(" Đã xuất file hàng đợi: auto_input_queue.json")
 
-    # 5. Xuất file auto_input_queue.xlsx đẹp mắt
-    excel_queue_data = []
-    for item in queue_actions:
-        excel_queue_data.append({
-            "STT": item["step"],
-            "Mã Vật Tư (Stock Code)": item["stock_code"],
-            "Mã Lô Dương (Batch)": item["batch"],
-            "Kho Nguồn": item["source_warehouse"],
-            "Kho Cấn Trừ (Target WH)": item["target_warehouse"],
-            "Số Lượng Cấn Trừ (Qty)": item["qty"],
-            "Vị Trí Kệ (BIN)": item["bin"],
-            "Quy Trình Gõ Form iScala": f"Gõ [{item['batch']}] -> Enter -> Gõ [{item['target_warehouse']}] -> Enter -> Gõ [{item['qty']}] -> Enter -> Gõ [01] -> Enter x 4"
-        })
-    queue_df = pd.DataFrame(excel_queue_data)
+    # 5. Xuất file auto_input_queue.xlsx bằng pure openpyxl
+    wb_out = openpyxl.Workbook()
+    ws_out = wb_out.active
+    ws_out.title = "Danh Sach Nhap Lieu"
     
-    with pd.ExcelWriter("auto_input_queue.xlsx", engine="openpyxl") as writer:
-        queue_df.to_excel(writer, sheet_name="Danh Sach Nhap Lieu", index=False)
-        
-        # Định dạng cột và màu sắc
-        ws = writer.sheets["Danh Sach Nhap Lieu"]
-        header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-        header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
-        thin_border = Border(
-            left=Side(style='thin', color='D9D9D9'),
-            right=Side(style='thin', color='D9D9D9'),
-            top=Side(style='thin', color='D9D9D9'),
-            bottom=Side(style='thin', color='D9D9D9')
-        )
-        
-        for col_num, col in enumerate(ws.columns, 1):
-            max_len = 0
-            for cell in col:
-                cell.font = Font(name="Segoe UI", size=10)
-                cell.border = thin_border
-                cell.alignment = Alignment(vertical="center")
-                if cell.row == 1:
-                    cell.fill = header_fill
-                    cell.font = header_font
-                    cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-                val_str = str(cell.value or '')
-                max_len = max(max_len, len(val_str))
-            col_letter = get_column_letter(col_num)
-            ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-            
+    headers = [
+        "STT", "Mã Vật Tư (Stock Code)", "Mã Lô Dương (Batch)", 
+        "Kho Nguồn", "Kho Cấn Trừ (Target WH)", "Số Lượng Cấn Trừ (Qty)", 
+        "Vị Trí Kệ (BIN)", "Quy Trình Gõ Form iScala"
+    ]
+    ws_out.append(headers)
+    
+    for item in queue_actions:
+        ws_out.append([
+            item["step"],
+            item["stock_code"],
+            item["batch"],
+            item["source_warehouse"],
+            item["target_warehouse"],
+            item["qty"],
+            item["bin"],
+            f"Gõ [{item['batch']}] -> Enter -> Gõ [{item['target_warehouse']}] -> Enter -> Gõ [{item['qty']}] -> Enter -> Gõ [01] -> Enter x 4"
+        ])
+    
+    format_excel_sheet(ws_out, header_color="1F4E78")
+    wb_out.save("auto_input_queue.xlsx")
     log(" Đã xuất file bảng tính: auto_input_queue.xlsx")
 
-    # 6. Xuất file report_unmatched_shortage.xlsx
-    skipped_df = pd.DataFrame(skipped_records)
-    summary_df = pd.DataFrame([
-        {"Chỉ Tiêu": "Tổng số dòng âm tại Kho 50 & 62", "Giá Trị": f"{len(neg_df):,} dòng"},
-        {"Chỉ Tiêu": "Tổng số lượng âm cần xử lý", "Giá Trị": f"{total_neg_qty:,.0f}"},
-        {"Chỉ Tiêu": "Số lượt nhập tự động (Lô nguyên vẹn)", "Giá Trị": f"{len(queue_actions)} lượt"},
-        {"Chỉ Tiêu": "Số lượng âm đã giải quyết ngay", "Giá Trị": f"{total_offset_qty:,.0f}"},
-        {"Chỉ Tiêu": "Số lượng còn thiếu (Chờ tách lẻ / nhập thêm)", "Giá Trị": f"{total_neg_qty - total_offset_qty:,.0f}"},
-        {"Chỉ Tiêu": "Tỷ lệ cấn trừ ngay không cần tách lẻ", "Giá Trị": f"{total_offset_qty/total_neg_qty*100:.2f}%"}
-    ])
+    # 6. Xuất file report_unmatched_shortage.xlsx bằng pure openpyxl
+    wb_rep = openpyxl.Workbook()
+    
+    # Sheet 1: Tổng Quan
+    ws_sum = wb_rep.active
+    ws_sum.title = "Tong Quan"
+    ws_sum.append(["Chỉ Tiêu Thống Kê", "Giá Trị"])
+    ws_sum.append(["Tổng số dòng âm tại Kho 50 & 62", f"{neg_count:,} dòng"])
+    ws_sum.append(["Tổng số lượng âm cần xử lý", f"{total_neg_qty:,.0f}"])
+    ws_sum.append(["Số lượt nhập tự động (Lô nguyên vẹn)", f"{len(queue_actions)} lượt"])
+    ws_sum.append(["Số lượng âm đã giải quyết ngay", f"{total_offset_qty:,.0f}"])
+    ws_sum.append(["Số lượng còn thiếu (Chờ tách lẻ / nhập thêm)", f"{total_neg_qty - total_offset_qty:,.0f}"])
+    ws_sum.append(["Tỷ lệ cấn trừ ngay không cần tách lẻ", f"{total_offset_qty/total_neg_qty*100:.2f}%"])
+    format_excel_sheet(ws_sum, header_color="2E75B6")
 
-    with pd.ExcelWriter("report_unmatched_shortage.xlsx", engine="openpyxl") as writer:
-        summary_df.to_excel(writer, sheet_name="Tong Quan", index=False)
-        skipped_df.to_excel(writer, sheet_name="Danh Sach Cho Tach Le", index=False)
+    # Sheet 2: Danh sách chờ tách lẻ
+    ws_skip = wb_rep.create_sheet(title="Danh Sach Cho Tach Le")
+    ws_skip.append([
+        "Mã Vật Tư (Stock Code)", "Kho Bị Âm", "Tổng Số Lượng Âm", 
+        "Đã Bù Trọn Vẹn", "Còn Thiếu (Chờ Tách Lẻ)", "Tỷ Lệ Bù (%)", "Lý Do"
+    ])
+    for s in skipped_records:
+        ws_skip.append([
+            s["stock_code"],
+            s["target_wh"],
+            s["total_neg"],
+            s["offset_done"],
+            s["remaining"],
+            s["ratio"],
+            s["reason"]
+        ])
+    format_excel_sheet(ws_skip, header_color="C00000")
+    
+    wb_rep.save("report_unmatched_shortage.xlsx")
     log(" Đã xuất file báo cáo: report_unmatched_shortage.xlsx")
     log("=== HOÀN TẤT XỬ LÝ DỮ LIỆU THÀNH CÔNG ===")
     return True
