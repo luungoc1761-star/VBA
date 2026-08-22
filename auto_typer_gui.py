@@ -2,14 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v4.5)
+SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v4.6)
 ================================================================================
-Quy trình chuẩn hóa 100% khớp với form SC7013_01 (Bin Transfers):
-  1. [BƯỚC 1]: Gõ Tag ID (Mã Batch) -> Gõ [ENTER] -> Tạm dừng 1.5s chờ iScala nạp DB.
-  2. [BƯỚC 2]: Con trỏ tự nhảy sang To Warehouse -> Xóa sạch ô -> Gõ ĐÚNG KHO ĐÍCH (50/62) -> [ENTER] -> Tạm dừng 0.4s.
-  3. [BƯỚC 3]: Con trỏ tự nhảy sang Bin Location -> Xóa sạch ô -> Gõ Kệ (01) -> [ENTER].
-  4. [BƯỚC 4]: Gõ [ENTER] 3 lần liên tiếp để kết thúc chu trình hoàn tất phiếu chuyển kho.
-  5. [BƯỚC 5]: Ghi nhật ký vào 'auto_typer_log.txt' và LẬP TỨC XÓA Tag ID đã xong khỏi 'auto_input_queue.json'.
+Cải tiến bổ sung - QUÉT VÀ ĐÓNG POPUP TỰ ĐỘNG (POPUP AUTO-DISMISS ROUTINE):
+  1. [BƯỚC 1]: Gõ Tag ID (Batch) -> Gõ [ENTER] -> Nghỉ 1.5s chờ iScala nạp DB.
+  2. [BƯỚC 2]: Con trỏ tự nhảy To Warehouse -> Xóa ô -> Gõ ĐÚNG KHO ĐÍCH (50/62) -> [ENTER] -> Nghỉ 0.4s.
+  3. [BƯỚC 3]: Con trỏ tự nhảy Bin Location -> Xóa ô -> Gõ Kệ (01) -> [ENTER] -> Nghỉ 0.4s.
+  4. [BƯỚC 4]: Gõ [ENTER] 3 lần liên tiếp kết thúc phiếu chuyển kho.
+  5. [BƯỚC 5 - QUÉT POPUP]: Tạm dừng 0.4s -> Tự động quét và gửi phím [ENTER] / [SPACE]
+     để đóng popup thông báo/cảnh báo của iScala, đưa con trỏ về lại ô Tag ID an toàn.
+  6. [BƯỚC 6]: Ghi nhật ký vào 'auto_typer_log.txt' và LẬP TỨC XÓA Tag ID đã xong khỏi 'auto_input_queue.json'.
 ================================================================================
 """
 
@@ -131,11 +133,17 @@ if IS_WINDOWS:
     def press_enter():
         win_press_vk(VK_RETURN, hold_time=0.025)
 
+    def press_space():
+        win_press_vk(VK_SPACE, hold_time=0.025)
+
 else:
     def type_text(text, char_delay=0.02, use_clipboard=False, clear_first=False):
         time.sleep(len(str(text)) * char_delay)
 
     def press_enter():
+        time.sleep(0.02)
+
+    def press_space():
         time.sleep(0.02)
 
 
@@ -145,7 +153,7 @@ else:
 class IScalaAutoTyperApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("iScala Falcon Auto-Typer Control Panel v4.5 (SC7013 Exact Workflow)")
+        self.root.title("iScala Falcon Auto-Typer Control Panel v4.6 (Popup Auto-Dismiss)")
         self.root.geometry("1080x840")
         self.root.minsize(940, 700)
         
@@ -165,7 +173,7 @@ class IScalaAutoTyperApp:
         self._setup_style()
         self._build_ui()
         
-        self.log(f"Khởi động iScala Falcon Auto-Typer v4.5 (Khớp 100% quy trình SC7013)", "INFO")
+        self.log(f"Khởi động iScala Falcon Auto-Typer v4.6 (Tích hợp Quét & Đóng Popup)", "INFO")
         
         if os.path.exists(self.current_json_path):
             self.load_queue_file(self.current_json_path)
@@ -189,7 +197,7 @@ class IScalaAutoTyperApp:
 
         title_label = tk.Label(
             header_frame, 
-            text="🛡️ iSCALA FALCON AUTO-TYPER v4.5 (FORM SC7013 BIN TRANSFERS)", 
+            text="🛡️ iSCALA FALCON AUTO-TYPER v4.6 (FORM SC7013 BIN TRANSFERS)", 
             font=("Segoe UI", 13, "bold"), 
             fg="#F8FAFC", 
             bg="#0F172A"
@@ -268,7 +276,7 @@ class IScalaAutoTyperApp:
         timing_box = tk.Frame(control_card, bg="#FFFFFF")
         timing_box.pack(fill=tk.X, pady=(8, 2))
 
-        lbl_tag_wait = tk.Label(timing_box, text="⏳ Thời gian chờ iScala nạp Tag ID:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#B91C1C")
+        lbl_tag_wait = tk.Label(timing_box, text="⏳ Chờ iScala nạp Tag ID:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#B91C1C")
         lbl_tag_wait.pack(side=tk.LEFT, padx=(2, 4))
 
         self.combo_tag_wait = ttk.Combobox(timing_box, values=["1.0s", "1.2s", "1.5s (Khuyên Dùng)", "2.0s"], width=16, state="readonly")
@@ -289,7 +297,7 @@ class IScalaAutoTyperApp:
         self.combo_enter_count.set("3 (Chuẩn SC7013)")
         self.combo_enter_count.pack(side=tk.LEFT, padx=2)
 
-        # Hàng 3: Tốc độ gõ phím & Tùy chọn an toàn
+        # Hàng 3: Tốc độ gõ phím & Tự động quét popup
         speed_box = tk.Frame(control_card, bg="#FFFFFF")
         speed_box.pack(fill=tk.X, pady=(6, 2))
 
@@ -303,19 +311,27 @@ class IScalaAutoTyperApp:
         self.speed_slider.set(0.05)
         self.speed_slider.pack(side=tk.LEFT, padx=(4, 4))
 
-        self.lbl_speed_desc = tk.Label(speed_box, text="50ms (Nhanh & Rõ)", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
+        self.lbl_speed_desc = tk.Label(speed_box, text="50ms", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
         self.lbl_speed_desc.pack(side=tk.LEFT, padx=2)
 
         self.auto_clear_field_var = tk.BooleanVar(value=True)
         chk_clear = tk.Checkbutton(
-            speed_box, text="🧹 Luôn xóa sạch ô trước khi điền (Ctrl+A -> Backspace)", variable=self.auto_clear_field_var,
+            speed_box, text="🧹 Xóa sạch ô trước khi điền", variable=self.auto_clear_field_var,
             font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#047857", activebackground="#FFFFFF"
         )
-        chk_clear.pack(side=tk.LEFT, padx=(15, 4))
+        chk_clear.pack(side=tk.LEFT, padx=(12, 4))
+
+        # Tùy chọn Quét và đóng Popup tự động
+        self.auto_dismiss_popup_var = tk.BooleanVar(value=True)
+        chk_popup = tk.Checkbutton(
+            speed_box, text="🔔 Quét & Tự Đóng Popup Thông Báo iScala", variable=self.auto_dismiss_popup_var,
+            font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#7C3AED", activebackground="#FFFFFF"
+        )
+        chk_popup.pack(side=tk.LEFT, padx=(12, 4))
 
         self.use_clipboard_var = tk.BooleanVar(value=False)
         chk_clip = tk.Checkbutton(
-            speed_box, text="📋 Dán nhanh (Ctrl+V)", variable=self.use_clipboard_var,
+            speed_box, text="📋 Dán (Ctrl+V)", variable=self.use_clipboard_var,
             font=("Segoe UI", 9), bg="#FFFFFF", fg="#475569", activebackground="#FFFFFF"
         )
         chk_clip.pack(side=tk.RIGHT, padx=4)
@@ -356,7 +372,7 @@ class IScalaAutoTyperApp:
         tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, pady=4)
 
         # Bottom pane: Streaming Console
-        bottom_frame = tk.LabelFrame(content_paned, text=" 📺 LIVE STREAMING CONSOLE (THEO DÕI TỪNG BƯỚC NHẬP FORM SC7013) ", font=("Segoe UI", 9, "bold"), bg="#0F172A", fg="#38BDF8")
+        bottom_frame = tk.LabelFrame(content_paned, text=" 📺 LIVE STREAMING CONSOLE (THEO DÕI TỪNG BƯỚC NHẬP & QUÉT POPUP) ", font=("Segoe UI", 9, "bold"), bg="#0F172A", fg="#38BDF8")
         content_paned.add(bottom_frame, height=230)
 
         self.console = ScrolledText(
@@ -367,6 +383,7 @@ class IScalaAutoTyperApp:
         self.console.tag_config("INFO", foreground="#94A3B8")
         self.console.tag_config("KEY", foreground="#38BDF8")
         self.console.tag_config("TARGET_WH", foreground="#F59E0B", font=("Consolas", 10, "bold"))
+        self.console.tag_config("POPUP", foreground="#A855F7", font=("Consolas", 10, "bold"))
         self.console.tag_config("SUCCESS", foreground="#4ADE80", font=("Consolas", 10, "bold"))
         self.console.tag_config("WARN", foreground="#FBBF24")
         self.console.tag_config("ERROR", foreground="#F87171", font=("Consolas", 11, "bold"))
@@ -384,7 +401,7 @@ class IScalaAutoTyperApp:
         self.lbl_progress_text = tk.Label(footer_frame, text="Tiến độ: 0% | Còn lại: 0 dòng", font=("Segoe UI", 9), bg="#F1F5F9", fg="#475569")
         self.lbl_progress_text.pack(side=tk.LEFT, pady=2)
 
-        lbl_tips = tk.Label(footer_frame, text="🛡️ Kho đích chỉ điền 50/62 | Tự động xóa khỏi JSON sau khi hoàn tất | Bấm ESC để dừng.", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
+        lbl_tips = tk.Label(footer_frame, text="🔔 Đã kích hoạt lệnh Quét & Tự đóng Popup | Tự động xóa khỏi JSON sau khi hoàn tất | ESC để dừng.", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
         lbl_tips.pack(side=tk.RIGHT, pady=2)
 
         self.root.bind("<F6>", lambda e: self.start_typing_process())
@@ -451,7 +468,6 @@ class IScalaAutoTyperApp:
             
             raw_actions = data.get("actions", [])
             
-            # KIỂM TOÁN TÍNH TOÀN VẸN: Bắt buộc target_warehouse phải là '50' hoặc '62'
             self.queue_data = []
             for item in raw_actions:
                 t_wh = str(item.get("target_warehouse", "")).strip()
@@ -520,7 +536,7 @@ class IScalaAutoTyperApp:
         self.lbl_progress_text.config(text=f"Tiến độ: {pct:.1f}% | Còn lại: {remain_count} dòng")
 
     # ==========================================================================
-    # CHU TRÌNH GÕ CHUẨN FORM SC7013 (CHÍNH XÁC TUYỆT ĐỐI)
+    # CHU TRÌNH GÕ CHUẨN FORM SC7013 + QUÉT ĐÓNG POPUP
     # ==========================================================================
     def _execute_single_form_entry(self, item, idx):
         batch = str(item.get("batch")).strip()
@@ -528,7 +544,6 @@ class IScalaAutoTyperApp:
         target_wh = str(item.get("target_warehouse")).strip()
         bin_val = str(item.get("bin", "01")).strip()
         
-        # KHÓA BẢO VỆ NGHIÊM NGẶT
         if target_wh not in ["50", "62"]:
             self.log(f"❌ LỖI DỮ LIỆU: Kho đích [{target_wh}] không phải 50 hoặc 62! DỪNG NGAY.", "ERROR")
             raise ValueError(f"Kho đích không hợp lệ: {target_wh}")
@@ -572,11 +587,23 @@ class IScalaAutoTyperApp:
         press_enter()
         time.sleep(step_wait_time)
 
+        if self.stop_requested:
+            return False
+
         # BƯỚC 4: Gõ [ENTER] 3 lần liên tiếp kết thúc phiếu chuyển kho
         self.log(f"  [KẾT THÚC PHIẾU] Gõ [ENTER] x {end_enters} lần...", "KEY")
         for _ in range(end_enters):
             press_enter()
-            time.sleep(0.18)
+            time.sleep(0.20)
+
+        # BƯỚC 5: LỆNH QUÉT & TỰ ĐÓNG POPUP THÔNG BÁO (POPUP DISMISSAL ROUTINE)
+        if self.auto_dismiss_popup_var.get():
+            self.log("  🔔 [QUÉT POPUP] Chờ & gửi phím đóng Popup thông báo iScala (nếu có)...", "POPUP")
+            time.sleep(0.40)      # Chờ popup iScala hiển thị
+            press_enter()          # Gõ Enter đóng popup
+            time.sleep(0.25)
+            press_space()          # Gõ Space dự phòng để đóng modal OK
+            time.sleep(0.30)
 
         return True
 
@@ -632,7 +659,7 @@ class IScalaAutoTyperApp:
         try:
             success = self._execute_single_form_entry(item, self.test_target_index + 1)
             if success:
-                self.log(f" THÀNH CÔNG: Đã hoàn tất Tag ID [{batch}]. XÓA KHỎI FILE JSON!", "SUCCESS")
+                self.log(f" THÀNH CÔNG: Đã hoàn tất Tag ID [{batch}] & đóng popup an toàn. XÓA KHỎI JSON!", "SUCCESS")
                 self.queue_data.pop(self.test_target_index)
                 self.completed_count += 1
                 self._save_queue_to_disk()
@@ -649,7 +676,7 @@ class IScalaAutoTyperApp:
         self.btn_pause.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.DISABLED)
         self.status_badge.config(text="● TRẠNG THÁI: ĐÃ TEST XONG (IDLE)", fg="#38BDF8", bg="#0C4A6E")
-        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng và XÓA khỏi JSON!\n\nBạn hãy kiểm tra màn hình iScala SC7013. Nếu ô 'To Warehouse' đã hiển thị ĐÚNG 50 hoặc 62, hãy bấm 'CHẠY TẤT CẢ'.")
+        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng, quét popup và XÓA khỏi JSON!\n\nNếu form SC7013 đã quay về ô Tag ID sẵn sàng cho dòng tiếp theo, hãy bấm 'CHẠY TẤT CẢ'.")
 
     # ==========================================================================
     # MODE CHẠY TẤT CẢ (RUN ALL)
