@@ -2,15 +2,20 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v3.0)
+SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v3.5)
 ================================================================================
-Cải tiến đột phá trong bản v3.0:
-  1. KHẮC PHỤC TRIỆT ĐỂ LỖI GÕ PHÍM: Sử dụng Win32 keybd_event & VkKeyScanW 
-     (Tương thích 100% với form iScala SC7013_01 và MFC/Win32 Controls).
-  2. BỔ SUNG CHẾ ĐỘ DÁN CLIPBOARD (Ctrl+V): Chống trượt/mất ký tự khi mạng lag.
-  3. GHI NHẬT KÝ FILE (FILE LOGGING): Tự động ghi toàn bộ quá trình vào 'auto_typer_log.txt'.
-  4. CHẾ ĐỘ CHẠY THỬ 1 DÒNG (TEST 1 ITEM): Test trước từng trường dữ liệu.
-  5. TÙY BIẾN TỐC ĐỘ: Thanh trượt mili-giây và các preset tốc độ trực quan.
+Cải tiến & Tối ưu hóa theo yêu cầu thực tế:
+  1. KHẮC PHỤC DƯ ENTER: Điều chỉnh chuẩn chuỗi phím form SC7013:
+     - [1] Gõ Tag ID -> Enter
+     - [2] Gõ To Warehouse -> Enter
+     - [3] Gõ Bin Location (01) -> Enter
+     - [4] Gõ Enter 2 lần kết thúc vòng lặp (Cho phép tùy chỉnh số lần Enter trên UI).
+  2. TỰ ĐỘNG BỎ POPUP THÔNG BÁO: Tự động gửi phím Enter/Space để đóng popup nếu có thông báo phát sinh.
+  3. XÓA DỮ LIỆU ĐÃ CHẠY KHỎI JSON:
+     - Dữ liệu chạy thành công (cả chế độ Test và Chạy Thật) sẽ được ghi log chi tiết
+       và LẬP TỨC XÓA KHỎI file 'auto_input_queue.json'.
+     - Đảm bảo khi chạy lại không bao giờ bị trùng lặp các Tag ID đã xử lý.
+  4. GHI NHẬT KÝ ĐẦY ĐỦ VÀO 'auto_typer_log.txt'.
 ================================================================================
 """
 
@@ -41,10 +46,10 @@ if IS_WINDOWS:
     VK_RETURN = 0x0D
     VK_TAB = 0x09
     VK_ESCAPE = 0x1B
+    VK_SPACE = 0x20
     VK_CONTROL = 0x11
     VK_SHIFT = 0x10
     VK_V = 0x56
-    VK_C = 0x43
 
     KEYEVENTF_KEYUP = 0x0002
 
@@ -63,10 +68,8 @@ if IS_WINDOWS:
         time.sleep(0.01)
 
     def win_type_char(char, char_delay=0.02):
-        """Gõ 1 ký tự bằng Virtual Key + Scan Code (Được iScala tiếp nhận 100%)"""
         vk_res = user32.VkKeyScanW(ord(char))
         if vk_res == -1:
-            # Fallback nếu ký tự đặc biệt
             win_send_unicode_fallback(char)
             return
 
@@ -86,7 +89,6 @@ if IS_WINDOWS:
         time.sleep(char_delay)
 
     def win_send_unicode_fallback(char):
-        """Fallback qua SendInput nếu ký tự không có trong layout bàn phím"""
         class KEYBDINPUT(ctypes.Structure):
             _fields_ = [
                 ("wVk", wintypes.WORD),
@@ -112,7 +114,6 @@ if IS_WINDOWS:
         user32.SendInput(1, ctypes.byref(inp_u), ctypes.sizeof(INPUT))
 
     def set_clipboard_text(text):
-        """Sao chép text vào Windows Clipboard để dán nhanh (Ctrl+V)"""
         try:
             import tkinter as tk_temp
             r = tk.Tk()
@@ -125,7 +126,6 @@ if IS_WINDOWS:
             pass
 
     def paste_clipboard():
-        """Bấm tổ hợp phím Ctrl+V"""
         win_key_down(VK_CONTROL)
         time.sleep(0.01)
         win_press_vk(VK_V, hold_time=0.015)
@@ -146,18 +146,17 @@ if IS_WINDOWS:
     def press_enter():
         win_press_vk(VK_RETURN, hold_time=0.02)
 
-    def press_tab():
-        win_press_vk(VK_TAB, hold_time=0.02)
+    def press_space():
+        win_press_vk(VK_SPACE, hold_time=0.02)
 
 else:
-    # Non-Windows Mock
     def type_text(text, char_delay=0.02, use_clipboard=False):
         time.sleep(len(str(text)) * char_delay)
 
     def press_enter():
         time.sleep(0.02)
 
-    def press_tab():
+    def press_space():
         time.sleep(0.02)
 
 
@@ -167,34 +166,31 @@ else:
 class IScalaAutoTyperApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("iScala Falcon Auto-Typer Control Panel v3.0 (SC7013 Bin Transfers)")
-        self.root.geometry("1060x800")
+        self.root.title("iScala Falcon Auto-Typer Control Panel v3.5 (SC7013 Optimized)")
+        self.root.geometry("1060x820")
         self.root.minsize(920, 680)
         
+        self.current_json_path = "auto_input_queue.json"
         self.log_file_path = "auto_typer_log.txt"
         
         # Biến trạng thái
         self.queue_data = []
-        self.total_items = 0
-        self.completed_items = 0
-        self.total_qty_offset = 0
+        self.total_initial_items = 0
+        self.completed_count = 0
         
         self.is_running = False
         self.is_paused = False
         self.stop_requested = False
-        self.is_test_single_mode = False
         self.worker_thread = None
 
         self._setup_style()
         self._build_ui()
         
-        # Ghi log khởi động
-        self.log(f"Khởi động iScala Falcon Auto-Typer v3.0 (Log file: {self.log_file_path})", "INFO")
+        self.log(f"Khởi động iScala Falcon Auto-Typer v3.5 (Log file: {self.log_file_path})", "INFO")
         
         # Tự động nạp file hàng đợi nếu có sẵn
-        default_file = "auto_input_queue.json"
-        if os.path.exists(default_file):
-            self.load_queue_file(default_file)
+        if os.path.exists(self.current_json_path):
+            self.load_queue_file(self.current_json_path)
         else:
             self.log("Chưa tìm thấy file 'auto_input_queue.json'. Vui lòng chạy 'run_processor.bat' trước.", "WARN")
 
@@ -215,7 +211,7 @@ class IScalaAutoTyperApp:
 
         title_label = tk.Label(
             header_frame, 
-            text="⚡ iSCALA FALCON AUTO-TYPER v3.0 (FORM SC7013)", 
+            text="⚡ iSCALA FALCON AUTO-TYPER v3.5 (FORM SC7013)", 
             font=("Segoe UI", 13, "bold"), 
             fg="#F8FAFC", 
             bg="#0F172A"
@@ -238,16 +234,13 @@ class IScalaAutoTyperApp:
         stats_frame = tk.Frame(self.root, bg="#FFFFFF", bd=1, relief=tk.SOLID)
         stats_frame.pack(fill=tk.X, padx=12, pady=6)
 
-        self.lbl_stat_total = tk.Label(stats_frame, text="Tổng lượt: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#1E293B")
-        self.lbl_stat_total.pack(side=tk.LEFT, padx=15, pady=6)
-
-        self.lbl_stat_done = tk.Label(stats_frame, text="Đã xong: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#16A34A")
-        self.lbl_stat_done.pack(side=tk.LEFT, padx=15, pady=6)
-
-        self.lbl_stat_remain = tk.Label(stats_frame, text="Còn lại: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#DC2626")
+        self.lbl_stat_remain = tk.Label(stats_frame, text="Còn lại trong hàng đợi: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#DC2626")
         self.lbl_stat_remain.pack(side=tk.LEFT, padx=15, pady=6)
 
-        self.lbl_stat_qty = tk.Label(stats_frame, text="Số lượng cấn trừ: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
+        self.lbl_stat_done = tk.Label(stats_frame, text="Đã xử lý & xóa khỏi JSON: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#16A34A")
+        self.lbl_stat_done.pack(side=tk.LEFT, padx=15, pady=6)
+
+        self.lbl_stat_qty = tk.Label(stats_frame, text="Tổng số lượng cấn trừ còn lại: 0", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
         self.lbl_stat_qty.pack(side=tk.LEFT, padx=15, pady=6)
 
         # 3. CONTROL PANEL
@@ -259,7 +252,7 @@ class IScalaAutoTyperApp:
         btn_box.pack(fill=tk.X, pady=3)
 
         btn_load = tk.Button(
-            btn_box, text="📂 Nạp File Hàng Đợi", font=("Segoe UI", 9, "bold"),
+            btn_box, text="📂 Nạp File JSON", font=("Segoe UI", 9, "bold"),
             bg="#475569", fg="#FFFFFF", activebackground="#334155", activeforeground="#FFFFFF",
             relief=tk.FLAT, padx=10, pady=5, cursor="hand2", command=self.browse_queue_file
         )
@@ -293,12 +286,12 @@ class IScalaAutoTyperApp:
         )
         self.btn_stop.pack(side=tk.LEFT, padx=3)
 
-        # Hàng 2: Tốc độ & Phương thức nhập
-        speed_box = tk.Frame(control_card, bg="#FFFFFF")
-        speed_box.pack(fill=tk.X, pady=(8, 2))
+        # Hàng 2: Tùy chỉnh tốc độ & Tùy biến Enter kết thúc
+        config_box = tk.Frame(control_card, bg="#FFFFFF")
+        config_box.pack(fill=tk.X, pady=(8, 2))
 
-        lbl_speed = tk.Label(speed_box, text="⚡ Tốc độ gõ:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#1E293B")
-        lbl_speed.pack(side=tk.LEFT, padx=(2, 6))
+        lbl_speed = tk.Label(config_box, text="⚡ Tốc độ gõ:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#1E293B")
+        lbl_speed.pack(side=tk.LEFT, padx=(2, 4))
 
         presets = [
             ("🐢 Chậm (0.35s)", 0.35),
@@ -308,26 +301,42 @@ class IScalaAutoTyperApp:
         ]
         for name, val in presets:
             b = tk.Button(
-                speed_box, text=name, font=("Segoe UI", 8), bg="#F1F5F9", fg="#334155",
-                relief=tk.SOLID, bd=1, padx=6, pady=2, cursor="hand2",
+                config_box, text=name, font=("Segoe UI", 8), bg="#F1F5F9", fg="#334155",
+                relief=tk.SOLID, bd=1, padx=5, pady=2, cursor="hand2",
                 command=lambda v=val: self._set_speed_preset(v)
             )
             b.pack(side=tk.LEFT, padx=2)
 
         self.speed_slider = tk.Scale(
-            speed_box, from_=0.03, to=0.60, resolution=0.01, orient=tk.HORIZONTAL, length=150,
+            config_box, from_=0.03, to=0.60, resolution=0.01, orient=tk.HORIZONTAL, length=120,
             bg="#FFFFFF", fg="#0F172A", highlightthickness=0, command=self._on_speed_change
         )
         self.speed_slider.set(0.20)
-        self.speed_slider.pack(side=tk.LEFT, padx=(8, 4))
+        self.speed_slider.pack(side=tk.LEFT, padx=(6, 4))
 
-        self.lbl_speed_desc = tk.Label(speed_box, text="200ms (Chuẩn)", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
-        self.lbl_speed_desc.pack(side=tk.LEFT, padx=4)
+        self.lbl_speed_desc = tk.Label(config_box, text="200ms", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
+        self.lbl_speed_desc.pack(side=tk.LEFT, padx=2)
+
+        # Cấu hình số lần Enter kết thúc vòng lặp
+        lbl_enter_count = tk.Label(config_box, text="🔄 Số lần Enter kết thúc:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#1E293B")
+        lbl_enter_count.pack(side=tk.LEFT, padx=(12, 4))
+
+        self.combo_enter_count = ttk.Combobox(config_box, values=["1", "2", "3", "4"], width=4, state="readonly")
+        self.combo_enter_count.set("2")  # Mặc định 2 lần Enter để không bị dư
+        self.combo_enter_count.pack(side=tk.LEFT, padx=2)
+
+        # Tùy chọn Tự đóng popup thông báo
+        self.auto_dismiss_popup_var = tk.BooleanVar(value=True)
+        chk_popup = tk.Checkbutton(
+            config_box, text="🔔 Tự đóng popup nếu có lỗi/thông báo", variable=self.auto_dismiss_popup_var,
+            font=("Segoe UI", 9), bg="#FFFFFF", fg="#1E293B", activebackground="#FFFFFF"
+        )
+        chk_popup.pack(side=tk.RIGHT, padx=4)
 
         # Tùy chọn Clipboard Dán nhanh
         self.use_clipboard_var = tk.BooleanVar(value=False)
         chk_clip = tk.Checkbutton(
-            speed_box, text="📋 Dán nhanh (Ctrl+V)", variable=self.use_clipboard_var,
+            config_box, text="📋 Dán nhanh (Ctrl+V)", variable=self.use_clipboard_var,
             font=("Segoe UI", 9), bg="#FFFFFF", fg="#475569", activebackground="#FFFFFF"
         )
         chk_clip.pack(side=tk.RIGHT, padx=4)
@@ -337,7 +346,7 @@ class IScalaAutoTyperApp:
         content_paned.pack(fill=tk.BOTH, expand=True, padx=12, pady=4)
 
         # Top pane: Treeview Queue
-        top_frame = tk.LabelFrame(content_paned, text=" DANH SÁCH LƯỢT NHẬP LIỆU (Chọn dòng để chạy thử nếu muốn) ", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#334155")
+        top_frame = tk.LabelFrame(content_paned, text=" DANH SÁCH HÀNG ĐỢI (Dòng chạy thành công sẽ tự động bị xóa khỏi JSON) ", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#334155")
         content_paned.add(top_frame, height=190)
 
         cols = ("STT", "Stock_Code", "Batch", "Kho_Nguon", "Kho_Dich", "Qty", "Bin", "Trang_Thai")
@@ -345,7 +354,7 @@ class IScalaAutoTyperApp:
         
         self.tree.heading("STT", text="STT")
         self.tree.heading("Stock_Code", text="Mã Vật Tư")
-        self.tree.heading("Batch", text="Mã Lô Dương")
+        self.tree.heading("Batch", text="Tag ID (Batch Dương)")
         self.tree.heading("Kho_Nguon", text="Kho Nguồn")
         self.tree.heading("Kho_Dich", text="Kho Đích (Âm)")
         self.tree.heading("Qty", text="Số Lượng")
@@ -354,7 +363,7 @@ class IScalaAutoTyperApp:
 
         self.tree.column("STT", width=45, anchor="center")
         self.tree.column("Stock_Code", width=120, anchor="center")
-        self.tree.column("Batch", width=130, anchor="center")
+        self.tree.column("Batch", width=140, anchor="center")
         self.tree.column("Kho_Nguon", width=75, anchor="center")
         self.tree.column("Kho_Dich", width=95, anchor="center")
         self.tree.column("Qty", width=85, anchor="center")
@@ -392,10 +401,10 @@ class IScalaAutoTyperApp:
         self.progress_bar = ttk.Progressbar(footer_frame, variable=self.progress_var, maximum=100.0)
         self.progress_bar.pack(fill=tk.X, side=tk.TOP, pady=2)
 
-        self.lbl_progress_text = tk.Label(footer_frame, text="Tiến độ: 0% (0 / 0)", font=("Segoe UI", 9), bg="#F1F5F9", fg="#475569")
+        self.lbl_progress_text = tk.Label(footer_frame, text="Tiến độ: 0% | Còn lại: 0 dòng", font=("Segoe UI", 9), bg="#F1F5F9", fg="#475569")
         self.lbl_progress_text.pack(side=tk.LEFT, pady=2)
 
-        lbl_tips = tk.Label(footer_frame, text="💡 Mẹo: Bấm ESC để dừng khẩn cấp | Nhật ký tự động lưu vào auto_typer_log.txt", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
+        lbl_tips = tk.Label(footer_frame, text="💡 Dữ liệu gõ xong sẽ tự động xóa khỏi JSON | Bấm ESC để dừng khẩn cấp.", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
         lbl_tips.pack(side=tk.RIGHT, pady=2)
 
         # Phím tắt toàn cục
@@ -425,14 +434,12 @@ class IScalaAutoTyperApp:
         ts = datetime.now().strftime("%H:%M:%S")
         formatted = f"[{ts}] {message}\n"
         
-        # Ghi vào Console UI
         try:
             self.console.insert(tk.END, formatted, level)
             self.console.see(tk.END)
         except:
             pass
 
-        # Ghi đồng thời vào file auto_typer_log.txt
         try:
             with open(self.log_file_path, "a", encoding="utf-8") as f_log:
                 f_log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {message}\n")
@@ -441,10 +448,11 @@ class IScalaAutoTyperApp:
 
     def browse_queue_file(self):
         filepath = filedialog.askopenfilename(
-            title="Chọn file hàng đợi dữ liệu",
+            title="Chọn file hàng đợi JSON",
             filetypes=[("JSON Files", "*.json"), ("All Files", "*.*")]
         )
         if filepath:
+            self.current_json_path = filepath
             self.load_queue_file(filepath)
 
     def load_queue_file(self, filepath):
@@ -453,46 +461,72 @@ class IScalaAutoTyperApp:
                 data = json.load(f)
             
             self.queue_data = data.get("actions", [])
-            self.total_items = len(self.queue_data)
-            self.completed_items = 0
-            self.total_qty_offset = sum(item.get("qty", 0) for item in self.queue_data)
+            self.total_initial_items = len(self.queue_data)
+            self._refresh_ui_tree_and_stats()
             
-            self.lbl_stat_total.config(text=f"Tổng lượt: {self.total_items:,}")
-            self.lbl_stat_done.config(text="Đã xong: 0")
-            self.lbl_stat_remain.config(text=f"Còn lại: {self.total_items:,}")
-            self.lbl_stat_qty.config(text=f"Số lượng cấn trừ: {self.total_qty_offset:,}")
-            
-            for row in self.tree.get_children():
-                self.tree.delete(row)
-                
-            for idx, item in enumerate(self.queue_data, 1):
-                self.tree.insert("", tk.END, iid=str(idx), values=(
-                    idx,
-                    item.get("stock_code"),
-                    item.get("batch"),
-                    item.get("source_warehouse"),
-                    item.get("target_warehouse"),
-                    f"{item.get('qty'):,}",
-                    item.get("bin", "01"),
-                    "Chờ gõ..."
-                ))
-            
-            self.log(f"Đã nạp thành công {self.total_items} lượt nhập từ file: {os.path.basename(filepath)}", "SUCCESS")
-            self.btn_start.config(state=tk.NORMAL)
-            self.btn_test_one.config(state=tk.NORMAL)
-            self.progress_var.set(0)
-            self.lbl_progress_text.config(text=f"Tiến độ: 0% (0 / {self.total_items})")
+            self.log(f"Đã nạp thành công {len(self.queue_data)} lượt nhập từ: {os.path.basename(filepath)}", "SUCCESS")
+            self.btn_start.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
+            self.btn_test_one.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
             
         except Exception as e:
             self.log(f"Lỗi khi nạp file hàng đợi: {e}", "ERROR")
             messagebox.showerror("Lỗi", f"Không thể đọc file hàng đợi:\n{e}")
+
+    def _save_queue_to_disk(self):
+        """Lưu đè file auto_input_queue.json sau khi xóa các dòng đã chạy thành công"""
+        try:
+            total_qty_remain = sum(item.get("qty", 0) for item in self.queue_data)
+            output_json = {
+                "metadata": {
+                    "updated_at": datetime.now().isoformat(),
+                    "remaining_actions": len(self.queue_data),
+                    "total_offset_qty_remaining": total_qty_remain
+                },
+                "actions": self.queue_data
+            }
+            with open(self.current_json_path, "w", encoding="utf-8") as f:
+                json.dump(output_json, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            self.log(f"Cảnh báo khi lưu file JSON: {e}", "WARN")
+
+    def _refresh_ui_tree_and_stats(self):
+        """Cập nhật lại toàn bộ bảng danh sách và các thanh số liệu"""
+        remain_count = len(self.queue_data)
+        total_qty = sum(item.get("qty", 0) for item in self.queue_data)
+        
+        self.lbl_stat_remain.config(text=f"Còn lại trong hàng đợi: {remain_count:,}")
+        self.lbl_stat_done.config(text=f"Đã xử lý & xóa khỏi JSON: {self.completed_count:,}")
+        self.lbl_stat_qty.config(text=f"Số lượng cấn trừ còn lại: {total_qty:,}")
+        
+        for row in self.tree.get_children():
+            self.tree.delete(row)
+            
+        for idx, item in enumerate(self.queue_data, 1):
+            self.tree.insert("", tk.END, iid=str(idx), values=(
+                idx,
+                item.get("stock_code"),
+                item.get("batch"),
+                item.get("source_warehouse"),
+                item.get("target_warehouse"),
+                f"{item.get('qty'):,}",
+                item.get("bin", "01"),
+                "Chờ gõ..."
+            ))
+            
+        if self.total_initial_items > 0:
+            pct = (self.completed_count / (self.completed_count + remain_count)) * 100
+        else:
+            pct = 100.0 if remain_count == 0 else 0.0
+            
+        self.progress_var.set(pct)
+        self.lbl_progress_text.config(text=f"Tiến độ: {pct:.1f}% | Còn lại: {remain_count} dòng")
 
     # ==========================================================================
     # MODE CHẠY THỬ 1 DÒNG (TEST 1 ITEM)
     # ==========================================================================
     def start_test_single_item(self):
         if not self.queue_data:
-            messagebox.showwarning("Cảnh báo", "Chưa có dữ liệu hàng đợi. Vui lòng nạp file trước.")
+            messagebox.showwarning("Cảnh báo", "Hàng đợi đã trống hoặc chưa nạp dữ liệu.")
             return
 
         if self.is_running:
@@ -502,9 +536,8 @@ class IScalaAutoTyperApp:
         if selected:
             target_idx = int(selected[0]) - 1
         else:
-            target_idx = self.completed_items if self.completed_items < self.total_items else 0
+            target_idx = 0
 
-        self.is_test_single_mode = True
         self.test_target_index = target_idx
         self.is_running = True
         self.is_paused = False
@@ -521,10 +554,13 @@ class IScalaAutoTyperApp:
 
     def _run_test_single_worker(self):
         item = self.queue_data[self.test_target_index]
-        idx = self.test_target_index + 1
+        batch = item.get("batch")
+        stock_code = item.get("stock_code")
+        target_wh = item.get("target_warehouse")
+        bin_val = item.get("bin", "01")
         
         self.log("==================================================", "TEST")
-        self.log(f"🧪 BẮT ĐẦU CHẠY THỬ 1 DÒNG DUY NHẤT (LƯỢT #{idx})", "TEST")
+        self.log(f"🧪 CHẠY THỬ TAG ID: {batch} (MÃ: {stock_code})", "TEST")
         self.log(" CHUẨN BỊ: CLICK CHUỘT VÀO Ô 'TAG ID' TRÊN FORM SC7013!", "COUNTDOWN")
         self.log("==================================================", "TEST")
         
@@ -540,77 +576,73 @@ class IScalaAutoTyperApp:
         char_delay = float(self.speed_slider.get())
         step_delay = max(0.20, char_delay * 1.5)
         use_clipboard = self.use_clipboard_var.get()
+        end_enters = int(self.combo_enter_count.get() or 2)
 
-        stock_code = item.get("stock_code")
-        batch = item.get("batch")
-        target_wh = item.get("target_warehouse")
-        qty = str(item.get("qty"))
-        bin_val = item.get("bin", "01")
-
-        self.log(f"--- [TEST LƯỢT #{idx}] Mã: {stock_code} | Batch: {batch} | WH Đích: {target_wh} | Qty: {qty} ---", "TEST")
-        self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đang test..."))
+        self.log(f"--- Đang gõ Tag ID: {batch} | To Warehouse: {target_wh} | Bin: {bin_val} ---", "TEST")
 
         # BƯỚC 1: Điền Tag ID (Batch) -> Enter
-        self.log(f"  [1/4] Gõ Tag ID (Batch): {batch} -> [ENTER]", "KEY")
+        self.log(f"  [1/3] Gõ Tag ID: {batch} -> [ENTER]", "KEY")
         type_text(batch, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # BƯỚC 2: Điền Kho Đích (50 hoặc 62) -> Enter
-        self.log(f"  [2/4] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
+        # BƯỚC 2: Điền Kho Đích (To Warehouse) -> Enter
+        self.log(f"  [2/3] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
         type_text(target_wh, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # BƯỚC 3: Điền Số Lượng (Qty) -> Enter
-        self.log(f"  [3/4] Gõ Quantity: {qty} -> [ENTER]", "KEY")
-        type_text(qty, char_delay=char_delay, use_clipboard=use_clipboard)
-        time.sleep(step_delay)
-        press_enter()
-        time.sleep(step_delay)
-
-        # BƯỚC 4: Điền BIN '01' -> Enter
-        self.log(f"  [4/4] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
+        # BƯỚC 3: Điền Bin Location (01) -> Enter
+        self.log(f"  [3/3] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
         type_text(bin_val, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # BƯỚC 5: Gõ Enter 4 lần kết thúc vòng lặp
-        self.log("  [KẾT THÚC VÒNG LẶP] Gõ [ENTER] x 4 lần...", "KEY")
-        for _ in range(4):
+        # BƯỚC 4: Gõ Enter kết thúc vòng lặp (Theo cấu hình UI)
+        self.log(f"  [KẾT THÚC] Gõ [ENTER] x {end_enters} lần...", "KEY")
+        for _ in range(end_enters):
             press_enter()
             time.sleep(step_delay)
 
-        self.log(f" ĐÃ HOÀN TẤT GÕ THỬ LƯỢT #{idx}!", "SUCCESS")
-        self.log("=> Vui lòng xem màn hình iScala SC7013 xem các ô đã được điền đủ chưa.", "WARN")
-        self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đã Test"))
+        # Xử lý tự đóng popup thông báo nếu có phát sinh
+        if self.auto_dismiss_popup_var.get():
+            time.sleep(0.3)
+            press_enter()  # Nhấn Enter phụ để dismiss popup nếu iScala hiển thị thông báo
+
+        # Ghi log thành công
+        self.log(f" THÀNH CÔNG: Đã hoàn tất Tag ID [{batch}]. Tiến hành XÓA khỏi file JSON!", "SUCCESS")
         
+        # Xóa dòng vừa chạy xong khỏi danh sách và cập nhật file JSON ngay lập tức
+        self.queue_data.pop(self.test_target_index)
+        self.completed_count += 1
+        self._save_queue_to_disk()
+
         self.is_running = False
         self.root.after(0, self._on_finish_test_single)
 
     def _on_finish_test_single(self):
-        self.btn_start.config(state=tk.NORMAL)
-        self.btn_test_one.config(state=tk.NORMAL)
+        self._refresh_ui_tree_and_stats()
+        self.btn_start.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
+        self.btn_test_one.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
         self.btn_pause.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.DISABLED)
-        self.status_badge.config(text="● TRẠNG THÁI: TEST XONG (IDLE)", fg="#38BDF8", bg="#0C4A6E")
-        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng!\n\nBạn hãy kiểm tra màn hình iScala SC7013. Nếu mọi thứ chuẩn xác, hãy bấm 'CHẠY TẤT CẢ' để bot hoàn tất toàn bộ danh sách.")
+        self.status_badge.config(text="● TRẠNG THÁI: ĐÃ TEST XONG (IDLE)", fg="#38BDF8", bg="#0C4A6E")
+        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng và XÓA khỏi JSON!\n\nBạn hãy kiểm tra màn hình iScala SC7013. Nếu chuẩn xác, hãy bấm 'CHẠY TẤT CẢ' để bot hoàn tất toàn bộ danh sách còn lại.")
 
     # ==========================================================================
     # MODE CHẠY TẤT CẢ (RUN ALL)
     # ==========================================================================
     def start_typing_process(self):
         if not self.queue_data:
-            messagebox.showwarning("Cảnh báo", "Chưa có dữ liệu hàng đợi. Vui lòng nạp file trước.")
+            messagebox.showwarning("Cảnh báo", "Hàng đợi đã trống hoặc chưa nạp dữ liệu.")
             return
 
         if self.is_running:
             return
 
-        self.is_test_single_mode = False
         self.is_running = True
         self.is_paused = False
         self.stop_requested = False
@@ -646,12 +678,13 @@ class IScalaAutoTyperApp:
         self.is_running = False
         self.is_paused = False
         
-        self.btn_start.config(state=tk.NORMAL)
-        self.btn_test_one.config(state=tk.NORMAL)
+        self.btn_start.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
+        self.btn_test_one.config(state=tk.NORMAL if self.queue_data else tk.DISABLED)
         self.btn_pause.config(state=tk.DISABLED, text="⏸️ TẠM DỪNG (F7)", bg="#D97706")
         self.btn_stop.config(state=tk.DISABLED)
         self.status_badge.config(text="● TRẠNG THÁI: ĐÃ DỪNG (STOPPED)", fg="#F87171", bg="#7F1D1D")
-        self.log("⏹️ ĐÃ DỪNG HẲN TIẾN TRÌNH THEO YÊU CẦU CỦA NGƯỜI DÙNG.", "ERROR")
+        self.log("⏹️ ĐÃ DỪNG TIẾN TRÌNH. CÁC DÒNG ĐÃ XONG VẪN ĐƯỢC LƯU VÀ XÓA AN TOÀN.", "ERROR")
+        self._refresh_ui_tree_and_stats()
 
     def _run_auto_typer_worker(self):
         self.log("==================================================", "COUNTDOWN")
@@ -664,13 +697,14 @@ class IScalaAutoTyperApp:
             self.log(f" Bắt đầu gõ sau {i} giây...", "COUNTDOWN")
             time.sleep(1.0)
 
-        self.log(" BẮT ĐẦU GÕ DỮ LIỆU VÀO iSCALA...", "SUCCESS")
+        self.log(" BẮT ĐẦU GÕ TOÀN BỘ DANH SÁCH VÀO iSCALA...", "SUCCESS")
 
         char_delay = float(self.speed_slider.get())
         step_delay = max(0.20, char_delay * 1.5)
         use_clipboard = self.use_clipboard_var.get()
+        end_enters = int(self.combo_enter_count.get() or 2)
 
-        for idx, item in enumerate(self.queue_data[self.completed_items:], self.completed_items + 1):
+        while len(self.queue_data) > 0:
             while self.is_paused:
                 if self.stop_requested:
                     return
@@ -679,88 +713,73 @@ class IScalaAutoTyperApp:
             if self.stop_requested:
                 return
 
+            # Luôn lấy phần tử đầu tiên của hàng đợi
+            item = self.queue_data[0]
             stock_code = item.get("stock_code")
             batch = item.get("batch")
             target_wh = item.get("target_warehouse")
-            qty = str(item.get("qty"))
             bin_val = item.get("bin", "01")
+            qty = str(item.get("qty"))
 
-            self.log(f"--- [LƯỢT {idx}/{self.total_items}] Mã: {stock_code} | Batch: {batch} | WH Đích: {target_wh} | Qty: {qty} ---", "INFO")
-            self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đang gõ..."))
+            self.log(f"--- [ĐANG XỬ LÝ] Tag ID: {batch} | Stock: {stock_code} | WH: {target_wh} | Qty: {qty} ---", "INFO")
 
             # 1. Tag ID (Batch) -> Enter
-            self.log(f"  [1/4] Gõ Tag ID (Batch): {batch} -> [ENTER]", "KEY")
+            self.log(f"  [1/3] Gõ Tag ID: {batch} -> [ENTER]", "KEY")
             type_text(batch, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
             # 2. To Warehouse -> Enter
-            self.log(f"  [2/4] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
+            self.log(f"  [2/3] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
             type_text(target_wh, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
-            # 3. Quantity -> Enter
-            self.log(f"  [3/4] Gõ Quantity: {qty} -> [ENTER]", "KEY")
-            type_text(qty, char_delay=char_delay, use_clipboard=use_clipboard)
-            time.sleep(step_delay)
-            press_enter()
-            time.sleep(step_delay)
-
-            # 4. Bin Location -> Enter
-            self.log(f"  [4/4] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
+            # 3. Bin Location -> Enter
+            self.log(f"  [3/3] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
             type_text(bin_val, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
-            # 5. Enter x 4
-            self.log("  [KẾT THÚC VÒNG LẶP] Gõ [ENTER] x 4 lần...", "KEY")
-            for _ in range(4):
+            # 4. Enter kết thúc vòng lặp
+            self.log(f"  [KẾT THÚC] Gõ [ENTER] x {end_enters} lần...", "KEY")
+            for _ in range(end_enters):
                 press_enter()
                 time.sleep(step_delay)
 
-            self.completed_items = idx
-            self.log(f" Hoàn tất thành công lượt {idx}/{self.total_items}!", "SUCCESS")
+            # Tự đóng popup nếu có thông báo phát sinh
+            if self.auto_dismiss_popup_var.get():
+                time.sleep(0.25)
+                press_enter()
 
-            self.root.after(0, lambda i=idx: self._update_tree_status(i, " Hoàn tất"))
-            self.root.after(0, self._update_progress_stats)
+            # XÓA DÒNG ĐÃ XONG VÀ LƯU FILE JSON
+            self.queue_data.pop(0)
+            self.completed_count += 1
+            self._save_queue_to_disk()
 
+            self.log(f" Đã hoàn tất & xóa Tag ID [{batch}] khỏi JSON (Còn lại: {len(self.queue_data)} dòng)", "SUCCESS")
+            
+            # Cập nhật UI
+            self.root.after(0, self._refresh_ui_tree_and_stats)
             time.sleep(0.35)
 
         self.is_running = False
         self.root.after(0, self._on_finish_all)
 
-    def _update_tree_status(self, idx, status_text):
-        try:
-            self.tree.set(str(idx), "Trang_Thai", status_text)
-            self.tree.see(str(idx))
-        except:
-            pass
-
-    def _update_progress_stats(self):
-        done = self.completed_items
-        total = self.total_items
-        remain = max(0, total - done)
-        pct = (done / total * 100) if total > 0 else 0
-
-        self.lbl_stat_done.config(text=f"Đã xong: {done:,}")
-        self.lbl_stat_remain.config(text=f"Còn lại: {remain:,}")
-        self.progress_var.set(pct)
-        self.lbl_progress_text.config(text=f"Tiến độ: {pct:.1f}% ({done} / {total})")
-
     def _on_finish_all(self):
-        self.btn_start.config(state=tk.NORMAL)
-        self.btn_test_one.config(state=tk.NORMAL)
+        self._refresh_ui_tree_and_stats()
+        self.btn_start.config(state=tk.DISABLED)
+        self.btn_test_one.config(state=tk.DISABLED)
         self.btn_pause.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.DISABLED)
         self.status_badge.config(text="● TRẠNG THÁI: HOÀN TẤT (COMPLETED)", fg="#38BDF8", bg="#0C4A6E")
         self.log("==================================================", "SUCCESS")
-        self.log("🎉 XIN CHÚC MỪNG: ĐÃ HOÀN TẤT TOÀN BỘ DANH SÁCH NHẬP LIỆU!", "SUCCESS")
+        self.log("🎉 XIN CHÚC MỪNG: ĐÃ HOÀN TẤT TOÀN BỘ VÀ XÓA HẾT HÀNG ĐỢI!", "SUCCESS")
         self.log("==================================================", "SUCCESS")
-        messagebox.showinfo("Thành công", f"Đã hoàn tất tự động gõ {self.total_items} lượt vào iScala an toàn 100%!")
+        messagebox.showinfo("Thành công", f"Đã hoàn tất toàn bộ {self.completed_count} lượt vào iScala an toàn 100%!")
 
 
 if __name__ == "__main__":
