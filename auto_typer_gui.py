@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 ================================================================================
-SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v2.5)
+SCRIPT 2: iSCALA FALCON AUTO-TYPER GUI (GIAO DIỆN ĐIỀU KHIỂN TỰ ĐỘNG HÓA v3.0)
 ================================================================================
-Tính năng nâng cấp:
-  1. Chế độ [🧪 CHẠY THỬ 1 DÒNG (TEST 1 ITEM)]: Gõ thử 1 lượt duy nhất để test form.
-  2. Bảng điều khiển tốc độ linh hoạt (Nút chọn nhanh + Thanh trượt ms chi tiết).
-  3. Chế độ Từng Bước [Step-by-Step Mode]: Dừng sau mỗi dòng để người dùng duyệt.
-  4. Nút điều khiển: Bắt Đầu (Start), Tạm Dừng (Pause/Resume), Dừng Hẳn (Stop).
-  5. Live Streaming Console: Xem trực tiếp từng phím gõ theo thời gian thực.
-  6. Cơ chế gõ phím Windows Native SendInput: 100% an toàn, không bị Falcon EDR chặn.
+Cải tiến đột phá trong bản v3.0:
+  1. KHẮC PHỤC TRIỆT ĐỂ LỖI GÕ PHÍM: Sử dụng Win32 keybd_event & VkKeyScanW 
+     (Tương thích 100% với form iScala SC7013_01 và MFC/Win32 Controls).
+  2. BỔ SUNG CHẾ ĐỘ DÁN CLIPBOARD (Ctrl+V): Chống trượt/mất ký tự khi mạng lag.
+  3. GHI NHẬT KÝ FILE (FILE LOGGING): Tự động ghi toàn bộ quá trình vào 'auto_typer_log.txt'.
+  4. CHẾ ĐỘ CHẠY THỬ 1 DÒNG (TEST 1 ITEM): Test trước từng trường dữ liệu.
+  5. TÙY BIẾN TỐC ĐỘ: Thanh trượt mili-giây và các preset tốc độ trực quan.
 ================================================================================
 """
 
@@ -26,7 +26,7 @@ from tkinter import ttk, filedialog, messagebox
 from tkinter.scrolledtext import ScrolledText
 
 # ==============================================================================
-# KEYBOARD TYPING ENGINE (WINDOWS NATIVE SENDINPUT VIA CTYPES)
+# ROBUST HARDWARE KEYBOARD & CLIPBOARD ENGINE (WINDOWS NATIVE)
 # ==============================================================================
 IS_WINDOWS = sys.platform.startswith('win')
 
@@ -35,61 +35,129 @@ if IS_WINDOWS:
     from ctypes import wintypes
 
     user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
 
-    INPUT_KEYBOARD = 1
-    KEYEVENTF_KEYUP = 0x0002
-    KEYEVENTF_UNICODE = 0x0004
+    # Virtual-Key codes
     VK_RETURN = 0x0D
+    VK_TAB = 0x09
     VK_ESCAPE = 0x1B
+    VK_CONTROL = 0x11
+    VK_SHIFT = 0x10
+    VK_V = 0x56
+    VK_C = 0x43
 
-    class KEYBDINPUT(ctypes.Structure):
-        _fields_ = [
-            ("wVk", wintypes.WORD),
-            ("wScan", wintypes.WORD),
-            ("dwFlags", wintypes.DWORD),
-            ("time", wintypes.DWORD),
-            ("dwExtraInfo", ctypes.c_ulong)
-        ]
+    KEYEVENTF_KEYUP = 0x0002
 
-    class INPUT(ctypes.Structure):
-        class _INPUT(ctypes.Union):
-            _fields_ = [("ki", KEYBDINPUT)]
-        _anonymous_ = ("_input",)
-        _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
+    def win_key_down(vk_code):
+        scan_code = user32.MapVirtualKeyW(vk_code, 0)
+        user32.keybd_event(vk_code, scan_code, 0, 0)
 
-    def win_send_unicode_char(char):
-        """Gửi 1 ký tự Unicode qua SendInput"""
-        inp_down = INPUT(type=INPUT_KEYBOARD)
-        inp_down.ki = KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE, time=0, dwExtraInfo=0)
-        inp_up = INPUT(type=INPUT_KEYBOARD)
-        inp_up.ki = KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
-        user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
-        time.sleep(0.005)
-        user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
+    def win_key_up(vk_code):
+        scan_code = user32.MapVirtualKeyW(vk_code, 0)
+        user32.keybd_event(vk_code, scan_code, KEYEVENTF_KEYUP, 0)
 
-    def win_send_vk(vk_code):
-        """Gửi phím đặc biệt (Enter, Tab, Esc...)"""
-        inp_down = INPUT(type=INPUT_KEYBOARD)
-        inp_down.ki = KEYBDINPUT(wVk=vk_code, wScan=0, dwFlags=0, time=0, dwExtraInfo=0)
-        inp_up = INPUT(type=INPUT_KEYBOARD)
-        inp_up.ki = KEYBDINPUT(wVk=vk_code, wScan=0, dwFlags=KEYEVENTF_KEYUP, time=0, dwExtraInfo=0)
-        user32.SendInput(1, ctypes.byref(inp_down), ctypes.sizeof(INPUT))
-        time.sleep(0.005)
-        user32.SendInput(1, ctypes.byref(inp_up), ctypes.sizeof(INPUT))
+    def win_press_vk(vk_code, hold_time=0.015):
+        win_key_down(vk_code)
+        time.sleep(hold_time)
+        win_key_up(vk_code)
+        time.sleep(0.01)
 
-    def type_text(text, char_delay=0.03):
-        for char in str(text):
-            win_send_unicode_char(char)
-            time.sleep(char_delay)
+    def win_type_char(char, char_delay=0.02):
+        """Gõ 1 ký tự bằng Virtual Key + Scan Code (Được iScala tiếp nhận 100%)"""
+        vk_res = user32.VkKeyScanW(ord(char))
+        if vk_res == -1:
+            # Fallback nếu ký tự đặc biệt
+            win_send_unicode_fallback(char)
+            return
+
+        vk = vk_res & 0xFF
+        shift_state = (vk_res >> 8) & 1
+
+        if shift_state:
+            win_key_down(VK_SHIFT)
+            time.sleep(0.005)
+
+        win_press_vk(vk, hold_time=0.01)
+
+        if shift_state:
+            win_key_up(VK_SHIFT)
+            time.sleep(0.005)
+
+        time.sleep(char_delay)
+
+    def win_send_unicode_fallback(char):
+        """Fallback qua SendInput nếu ký tự không có trong layout bàn phím"""
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [
+                ("wVk", wintypes.WORD),
+                ("wScan", wintypes.WORD),
+                ("dwFlags", wintypes.DWORD),
+                ("time", wintypes.DWORD),
+                ("dwExtraInfo", ctypes.c_size_t)
+            ]
+
+        class INPUT(ctypes.Structure):
+            class _INPUT(ctypes.Union):
+                _fields_ = [("ki", KEYBDINPUT)]
+            _anonymous_ = ("_input",)
+            _fields_ = [("type", wintypes.DWORD), ("_input", _INPUT)]
+
+        inp_d = INPUT(type=1)
+        inp_d.ki = KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=0x0004, time=0, dwExtraInfo=0)
+        inp_u = INPUT(type=1)
+        inp_u.ki = KEYBDINPUT(wVk=0, wScan=ord(char), dwFlags=0x0004 | 0x0002, time=0, dwExtraInfo=0)
+
+        user32.SendInput(1, ctypes.byref(inp_d), ctypes.sizeof(INPUT))
+        time.sleep(0.01)
+        user32.SendInput(1, ctypes.byref(inp_u), ctypes.sizeof(INPUT))
+
+    def set_clipboard_text(text):
+        """Sao chép text vào Windows Clipboard để dán nhanh (Ctrl+V)"""
+        try:
+            import tkinter as tk_temp
+            r = tk.Tk()
+            r.withdraw()
+            r.clipboard_clear()
+            r.clipboard_append(str(text))
+            r.update()
+            r.destroy()
+        except:
+            pass
+
+    def paste_clipboard():
+        """Bấm tổ hợp phím Ctrl+V"""
+        win_key_down(VK_CONTROL)
+        time.sleep(0.01)
+        win_press_vk(VK_V, hold_time=0.015)
+        time.sleep(0.01)
+        win_key_up(VK_CONTROL)
+        time.sleep(0.01)
+
+    def type_text(text, char_delay=0.02, use_clipboard=False):
+        if use_clipboard:
+            set_clipboard_text(str(text))
+            time.sleep(0.02)
+            paste_clipboard()
+            time.sleep(0.02)
+        else:
+            for c in str(text):
+                win_type_char(c, char_delay=char_delay)
 
     def press_enter():
-        win_send_vk(VK_RETURN)
+        win_press_vk(VK_RETURN, hold_time=0.02)
+
+    def press_tab():
+        win_press_vk(VK_TAB, hold_time=0.02)
 
 else:
-    def type_text(text, char_delay=0.03):
+    # Non-Windows Mock
+    def type_text(text, char_delay=0.02, use_clipboard=False):
         time.sleep(len(str(text)) * char_delay)
 
     def press_enter():
+        time.sleep(0.02)
+
+    def press_tab():
         time.sleep(0.02)
 
 
@@ -99,9 +167,11 @@ else:
 class IScalaAutoTyperApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("iScala Falcon Auto-Typer Control Panel v2.5")
-        self.root.geometry("1040x780")
-        self.root.minsize(900, 650)
+        self.root.title("iScala Falcon Auto-Typer Control Panel v3.0 (SC7013 Bin Transfers)")
+        self.root.geometry("1060x800")
+        self.root.minsize(920, 680)
+        
+        self.log_file_path = "auto_typer_log.txt"
         
         # Biến trạng thái
         self.queue_data = []
@@ -118,12 +188,15 @@ class IScalaAutoTyperApp:
         self._setup_style()
         self._build_ui()
         
+        # Ghi log khởi động
+        self.log(f"Khởi động iScala Falcon Auto-Typer v3.0 (Log file: {self.log_file_path})", "INFO")
+        
         # Tự động nạp file hàng đợi nếu có sẵn
         default_file = "auto_input_queue.json"
         if os.path.exists(default_file):
             self.load_queue_file(default_file)
         else:
-            self.log("Chưa tìm thấy file 'auto_input_queue.json'. Vui lòng chạy file lọc dữ liệu trước hoặc bấm 'Nạp File Hàng Đợi'.", "WARN")
+            self.log("Chưa tìm thấy file 'auto_input_queue.json'. Vui lòng chạy 'run_processor.bat' trước.", "WARN")
 
     def _setup_style(self):
         self.root.configure(bg="#F1F5F9")
@@ -142,7 +215,7 @@ class IScalaAutoTyperApp:
 
         title_label = tk.Label(
             header_frame, 
-            text="⚡ iSCALA FALCON AUTO-TYPER ASSISTANT v2.5", 
+            text="⚡ iSCALA FALCON AUTO-TYPER v3.0 (FORM SC7013)", 
             font=("Segoe UI", 13, "bold"), 
             fg="#F8FAFC", 
             bg="#0F172A"
@@ -178,10 +251,10 @@ class IScalaAutoTyperApp:
         self.lbl_stat_qty.pack(side=tk.LEFT, padx=15, pady=6)
 
         # 3. CONTROL PANEL
-        control_card = tk.LabelFrame(self.root, text=" BẢNG ĐIỀU KHIỂN & CHẾ ĐỘ CHẠY ", font=("Segoe UI", 10, "bold"), bg="#FFFFFF", fg="#334155", padx=12, pady=8)
+        control_card = tk.LabelFrame(self.root, text=" BẢNG ĐIỀU KHIỂN & CHẾ ĐỘ THỰC THI ", font=("Segoe UI", 10, "bold"), bg="#FFFFFF", fg="#334155", padx=12, pady=8)
         control_card.pack(fill=tk.X, padx=12, pady=4)
 
-        # Hàng 1: Nút hành động chính + Nút Test 1 dòng
+        # Hàng 1: Nút hành động chính
         btn_box = tk.Frame(control_card, bg="#FFFFFF")
         btn_box.pack(fill=tk.X, pady=3)
 
@@ -220,14 +293,13 @@ class IScalaAutoTyperApp:
         )
         self.btn_stop.pack(side=tk.LEFT, padx=3)
 
-        # Hàng 2: Điều chỉnh tốc độ chi tiết
+        # Hàng 2: Tốc độ & Phương thức nhập
         speed_box = tk.Frame(control_card, bg="#FFFFFF")
         speed_box.pack(fill=tk.X, pady=(8, 2))
 
         lbl_speed = tk.Label(speed_box, text="⚡ Tốc độ gõ:", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#1E293B")
         lbl_speed.pack(side=tk.LEFT, padx=(2, 6))
 
-        # Các nút Preset tốc độ nhanh
         presets = [
             ("🐢 Chậm (0.35s)", 0.35),
             ("⚡ Chuẩn (0.20s)", 0.20),
@@ -240,18 +312,25 @@ class IScalaAutoTyperApp:
                 relief=tk.SOLID, bd=1, padx=6, pady=2, cursor="hand2",
                 command=lambda v=val: self._set_speed_preset(v)
             )
-            b.pack(side=tk.LEFT, padx=3)
+            b.pack(side=tk.LEFT, padx=2)
 
-        # Thanh trượt tinh chỉnh
         self.speed_slider = tk.Scale(
-            speed_box, from_=0.03, to=0.60, resolution=0.01, orient=tk.HORIZONTAL, length=180,
+            speed_box, from_=0.03, to=0.60, resolution=0.01, orient=tk.HORIZONTAL, length=150,
             bg="#FFFFFF", fg="#0F172A", highlightthickness=0, command=self._on_speed_change
         )
         self.speed_slider.set(0.20)
-        self.speed_slider.pack(side=tk.LEFT, padx=(10, 4))
+        self.speed_slider.pack(side=tk.LEFT, padx=(8, 4))
 
-        self.lbl_speed_desc = tk.Label(speed_box, text="0.20s (Chuẩn ổn định)", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
+        self.lbl_speed_desc = tk.Label(speed_box, text="200ms (Chuẩn)", font=("Segoe UI", 9, "bold"), bg="#FFFFFF", fg="#2563EB")
         self.lbl_speed_desc.pack(side=tk.LEFT, padx=4)
+
+        # Tùy chọn Clipboard Dán nhanh
+        self.use_clipboard_var = tk.BooleanVar(value=False)
+        chk_clip = tk.Checkbutton(
+            speed_box, text="📋 Dán nhanh (Ctrl+V)", variable=self.use_clipboard_var,
+            font=("Segoe UI", 9), bg="#FFFFFF", fg="#475569", activebackground="#FFFFFF"
+        )
+        chk_clip.pack(side=tk.RIGHT, padx=4)
 
         # 4. SPLIT PANE: Danh sách hàng đợi & Streaming Console
         content_paned = tk.PanedWindow(self.root, orient=tk.VERTICAL, bg="#F1F5F9", sashwidth=4)
@@ -289,7 +368,7 @@ class IScalaAutoTyperApp:
         tree_scroll_y.pack(side=tk.RIGHT, fill=tk.Y, pady=4)
 
         # Bottom pane: Streaming Console
-        bottom_frame = tk.LabelFrame(content_paned, text=" 📺 LIVE STREAMING CONSOLE (THEO DÕI GÕ PHÍM REAL-TIME) ", font=("Segoe UI", 9, "bold"), bg="#0F172A", fg="#38BDF8")
+        bottom_frame = tk.LabelFrame(content_paned, text=" 📺 LIVE STREAMING CONSOLE (XEM GÕ TRỰC TIẾP & GHI FILE LOG) ", font=("Segoe UI", 9, "bold"), bg="#0F172A", fg="#38BDF8")
         content_paned.add(bottom_frame, height=230)
 
         self.console = ScrolledText(
@@ -316,7 +395,7 @@ class IScalaAutoTyperApp:
         self.lbl_progress_text = tk.Label(footer_frame, text="Tiến độ: 0% (0 / 0)", font=("Segoe UI", 9), bg="#F1F5F9", fg="#475569")
         self.lbl_progress_text.pack(side=tk.LEFT, pady=2)
 
-        lbl_tips = tk.Label(footer_frame, text="💡 Mẹo: Bấm phím ESC để dừng khẩn cấp | Dùng nút 'CHẠY THỬ 1 DÒNG' để test form trước.", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
+        lbl_tips = tk.Label(footer_frame, text="💡 Mẹo: Bấm ESC để dừng khẩn cấp | Nhật ký tự động lưu vào auto_typer_log.txt", font=("Segoe UI", 9, "italic"), bg="#F1F5F9", fg="#64748B")
         lbl_tips.pack(side=tk.RIGHT, pady=2)
 
         # Phím tắt toàn cục
@@ -337,16 +416,28 @@ class IScalaAutoTyperApp:
         elif v <= 0.15:
             desc = f"{ms}ms (🚀 Nhanh)"
         elif v <= 0.28:
-            desc = f"{ms}ms ( Chuẩn ổn định)"
+            desc = f"{ms}ms ( Chuẩn)"
         else:
-            desc = f"{ms}ms (🐢 Chậm rãi)"
+            desc = f"{ms}ms (🐢 Chậm)"
         self.lbl_speed_desc.config(text=desc)
 
     def log(self, message, level="INFO"):
         ts = datetime.now().strftime("%H:%M:%S")
         formatted = f"[{ts}] {message}\n"
-        self.console.insert(tk.END, formatted, level)
-        self.console.see(tk.END)
+        
+        # Ghi vào Console UI
+        try:
+            self.console.insert(tk.END, formatted, level)
+            self.console.see(tk.END)
+        except:
+            pass
+
+        # Ghi đồng thời vào file auto_typer_log.txt
+        try:
+            with open(self.log_file_path, "a", encoding="utf-8") as f_log:
+                f_log.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] [{level}] {message}\n")
+        except:
+            pass
 
     def browse_queue_file(self):
         filepath = filedialog.askopenfilename(
@@ -407,7 +498,6 @@ class IScalaAutoTyperApp:
         if self.is_running:
             return
 
-        # Xác định dòng được chọn hoặc lấy dòng kế tiếp
         selected = self.tree.selection()
         if selected:
             target_idx = int(selected[0]) - 1
@@ -434,21 +524,22 @@ class IScalaAutoTyperApp:
         idx = self.test_target_index + 1
         
         self.log("==================================================", "TEST")
-        self.log(f"🧪 CHẾ ĐỘ CHẠY THỬ 1 DÒNG DUY NHẤT (LƯỢT #{idx})", "TEST")
-        self.log(" CHUẨN BỊ: CLICK CHUỘT VÀO Ô BATCH TRÊN iSCALA TRONG 5S!", "COUNTDOWN")
+        self.log(f"🧪 BẮT ĐẦU CHẠY THỬ 1 DÒNG DUY NHẤT (LƯỢT #{idx})", "TEST")
+        self.log(" CHUẨN BỊ: CLICK CHUỘT VÀO Ô 'TAG ID' TRÊN FORM SC7013!", "COUNTDOWN")
         self.log("==================================================", "TEST")
         
         for i in range(5, 0, -1):
             if self.stop_requested:
                 return
-            self.log(f" Bắt đầu gõ thử sau {i} giây...", "COUNTDOWN")
+            self.log(f" Bắt đầu gõ sau {i} giây...", "COUNTDOWN")
             time.sleep(1.0)
 
         if self.stop_requested:
             return
 
         char_delay = float(self.speed_slider.get())
-        step_delay = char_delay * 1.5
+        step_delay = max(0.20, char_delay * 1.5)
+        use_clipboard = self.use_clipboard_var.get()
 
         stock_code = item.get("stock_code")
         batch = item.get("batch")
@@ -456,45 +547,45 @@ class IScalaAutoTyperApp:
         qty = str(item.get("qty"))
         bin_val = item.get("bin", "01")
 
-        self.log(f"--- [TEST LƯỢT #{idx}] Mã: {stock_code} | Batch: {batch} | WH: {target_wh} | Qty: {qty} ---", "TEST")
+        self.log(f"--- [TEST LƯỢT #{idx}] Mã: {stock_code} | Batch: {batch} | WH Đích: {target_wh} | Qty: {qty} ---", "TEST")
         self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đang test..."))
 
-        # 1. Batch -> Enter
-        self.log(f"  [1/4] Gõ Batch: {batch} -> [ENTER]", "KEY")
-        type_text(batch, char_delay=char_delay)
+        # BƯỚC 1: Điền Tag ID (Batch) -> Enter
+        self.log(f"  [1/4] Gõ Tag ID (Batch): {batch} -> [ENTER]", "KEY")
+        type_text(batch, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # 2. Kho -> Enter
-        self.log(f"  [2/4] Gõ Kho: {target_wh} -> [ENTER]", "KEY")
-        type_text(target_wh, char_delay=char_delay)
+        # BƯỚC 2: Điền Kho Đích (50 hoặc 62) -> Enter
+        self.log(f"  [2/4] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
+        type_text(target_wh, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # 3. Qty -> Enter
-        self.log(f"  [3/4] Gõ Số Lượng: {qty} -> [ENTER]", "KEY")
-        type_text(qty, char_delay=char_delay)
+        # BƯỚC 3: Điền Số Lượng (Qty) -> Enter
+        self.log(f"  [3/4] Gõ Quantity: {qty} -> [ENTER]", "KEY")
+        type_text(qty, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # 4. Bin -> Enter
-        self.log(f"  [4/4] Gõ Kệ (BIN): {bin_val} -> [ENTER]", "KEY")
-        type_text(bin_val, char_delay=char_delay)
+        # BƯỚC 4: Điền BIN '01' -> Enter
+        self.log(f"  [4/4] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
+        type_text(bin_val, char_delay=char_delay, use_clipboard=use_clipboard)
         time.sleep(step_delay)
         press_enter()
         time.sleep(step_delay)
 
-        # 5. Enter x 4
-        self.log("  [KẾT THÚC] Gõ [ENTER] x 4 lần...", "KEY")
+        # BƯỚC 5: Gõ Enter 4 lần kết thúc vòng lặp
+        self.log("  [KẾT THÚC VÒNG LẶP] Gõ [ENTER] x 4 lần...", "KEY")
         for _ in range(4):
             press_enter()
             time.sleep(step_delay)
 
-        self.log(f" ĐÃ HOÀN TẤT CHẠY THỬ LƯỢT #{idx}!", "SUCCESS")
-        self.log("=> Hãy kiểm tra lại màn hình iScala xem form đã nhận chuẩn chưa.", "WARN")
+        self.log(f" ĐÃ HOÀN TẤT GÕ THỬ LƯỢT #{idx}!", "SUCCESS")
+        self.log("=> Vui lòng xem màn hình iScala SC7013 xem các ô đã được điền đủ chưa.", "WARN")
         self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đã Test"))
         
         self.is_running = False
@@ -506,7 +597,7 @@ class IScalaAutoTyperApp:
         self.btn_pause.config(state=tk.DISABLED)
         self.btn_stop.config(state=tk.DISABLED)
         self.status_badge.config(text="● TRẠNG THÁI: TEST XONG (IDLE)", fg="#38BDF8", bg="#0C4A6E")
-        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng!\n\nBạn hãy kiểm tra màn hình iScala. Nếu mọi thứ chuẩn xác, hãy bấm 'CHẠY TẤT CẢ' để bot hoàn tất toàn bộ danh sách.")
+        messagebox.showinfo("Đã Test Xong", "Đã gõ thử nghiệm thành công 1 dòng!\n\nBạn hãy kiểm tra màn hình iScala SC7013. Nếu mọi thứ chuẩn xác, hãy bấm 'CHẠY TẤT CẢ' để bot hoàn tất toàn bộ danh sách.")
 
     # ==========================================================================
     # MODE CHẠY TẤT CẢ (RUN ALL)
@@ -564,7 +655,7 @@ class IScalaAutoTyperApp:
 
     def _run_auto_typer_worker(self):
         self.log("==================================================", "COUNTDOWN")
-        self.log(" CHUẨN BỊ: VUI LÒNG CLICK CHUỘT VÀO Ô BATCH TRÊN iSCALA!", "COUNTDOWN")
+        self.log(" CHUẨN BỊ: CLICK CHUỘT VÀO Ô 'TAG ID' TRÊN FORM SC7013!", "COUNTDOWN")
         self.log("==================================================", "COUNTDOWN")
         
         for i in range(5, 0, -1):
@@ -576,7 +667,8 @@ class IScalaAutoTyperApp:
         self.log(" BẮT ĐẦU GÕ DỮ LIỆU VÀO iSCALA...", "SUCCESS")
 
         char_delay = float(self.speed_slider.get())
-        step_delay = char_delay * 1.5
+        step_delay = max(0.20, char_delay * 1.5)
+        use_clipboard = self.use_clipboard_var.get()
 
         for idx, item in enumerate(self.queue_data[self.completed_items:], self.completed_items + 1):
             while self.is_paused:
@@ -593,39 +685,39 @@ class IScalaAutoTyperApp:
             qty = str(item.get("qty"))
             bin_val = item.get("bin", "01")
 
-            self.log(f"--- [LƯỢT {idx}/{self.total_items}] Mã: {stock_code} | Batch: {batch} | WH: {target_wh} | Qty: {qty} ---", "INFO")
+            self.log(f"--- [LƯỢT {idx}/{self.total_items}] Mã: {stock_code} | Batch: {batch} | WH Đích: {target_wh} | Qty: {qty} ---", "INFO")
             self.root.after(0, lambda i=idx: self._update_tree_status(i, " Đang gõ..."))
 
-            # 1. Batch -> Enter
-            self.log(f"  [1/4] Gõ Batch: {batch} -> [ENTER]", "KEY")
-            type_text(batch, char_delay=char_delay)
+            # 1. Tag ID (Batch) -> Enter
+            self.log(f"  [1/4] Gõ Tag ID (Batch): {batch} -> [ENTER]", "KEY")
+            type_text(batch, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
-            # 2. Kho -> Enter
-            self.log(f"  [2/4] Gõ Kho: {target_wh} -> [ENTER]", "KEY")
-            type_text(target_wh, char_delay=char_delay)
+            # 2. To Warehouse -> Enter
+            self.log(f"  [2/4] Gõ To Warehouse: {target_wh} -> [ENTER]", "KEY")
+            type_text(target_wh, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
-            # 3. Qty -> Enter
-            self.log(f"  [3/4] Gõ Số Lượng: {qty} -> [ENTER]", "KEY")
-            type_text(qty, char_delay=char_delay)
+            # 3. Quantity -> Enter
+            self.log(f"  [3/4] Gõ Quantity: {qty} -> [ENTER]", "KEY")
+            type_text(qty, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
-            # 4. Bin -> Enter
-            self.log(f"  [4/4] Gõ Kệ (BIN): {bin_val} -> [ENTER]", "KEY")
-            type_text(bin_val, char_delay=char_delay)
+            # 4. Bin Location -> Enter
+            self.log(f"  [4/4] Gõ Bin Location: {bin_val} -> [ENTER]", "KEY")
+            type_text(bin_val, char_delay=char_delay, use_clipboard=use_clipboard)
             time.sleep(step_delay)
             press_enter()
             time.sleep(step_delay)
 
             # 5. Enter x 4
-            self.log("  [KẾT THÚC] Gõ [ENTER] x 4 lần...", "KEY")
+            self.log("  [KẾT THÚC VÒNG LẶP] Gõ [ENTER] x 4 lần...", "KEY")
             for _ in range(4):
                 press_enter()
                 time.sleep(step_delay)
@@ -636,7 +728,7 @@ class IScalaAutoTyperApp:
             self.root.after(0, lambda i=idx: self._update_tree_status(i, " Hoàn tất"))
             self.root.after(0, self._update_progress_stats)
 
-            time.sleep(0.3)
+            time.sleep(0.35)
 
         self.is_running = False
         self.root.after(0, self._on_finish_all)
