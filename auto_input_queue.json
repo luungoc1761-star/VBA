@@ -1,0 +1,722 @@
+{
+  "metadata": {
+    "created_at": "2026-08-22T05:37:29.057258",
+    "source_file": "Stock Balance With Batch.xlsx",
+    "total_actions": 71,
+    "total_offset_qty": 109173,
+    "total_negative_qty": 382450,
+    "offset_percentage": 28.55
+  },
+  "actions": [
+    {
+      "step": 1,
+      "stock_code": "3405010201",
+      "target_warehouse": "50",
+      "batch": "900002933363",
+      "source_warehouse": "61",
+      "qty": 100,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 2,
+      "stock_code": "3405010201",
+      "target_warehouse": "50",
+      "batch": "900002933362",
+      "source_warehouse": "61",
+      "qty": 175,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 3,
+      "stock_code": "3405030101",
+      "target_warehouse": "50",
+      "batch": "900002995780",
+      "source_warehouse": "61",
+      "qty": 361,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 4,
+      "stock_code": "3405040101",
+      "target_warehouse": "50",
+      "batch": "999900002402",
+      "source_warehouse": "61",
+      "qty": 330,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 5,
+      "stock_code": "3405100201",
+      "target_warehouse": "50",
+      "batch": "900002908260",
+      "source_warehouse": "61",
+      "qty": 30,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 6,
+      "stock_code": "3405100201",
+      "target_warehouse": "50",
+      "batch": "999900003477",
+      "source_warehouse": "61",
+      "qty": 110,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 7,
+      "stock_code": "3405100201",
+      "target_warehouse": "50",
+      "batch": "999900002518",
+      "source_warehouse": "61",
+      "qty": 420,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 8,
+      "stock_code": "3405110101",
+      "target_warehouse": "50",
+      "batch": "100006174226",
+      "source_warehouse": "61",
+      "qty": 500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 9,
+      "stock_code": "3405120101",
+      "target_warehouse": "50",
+      "batch": "199900015444",
+      "source_warehouse": "61",
+      "qty": 280,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 10,
+      "stock_code": "3405130101",
+      "target_warehouse": "50",
+      "batch": "999900003269",
+      "source_warehouse": "61",
+      "qty": 50,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 11,
+      "stock_code": "3405210301",
+      "target_warehouse": "50",
+      "batch": "100006145580",
+      "source_warehouse": "61",
+      "qty": 1240,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 12,
+      "stock_code": "3405230101",
+      "target_warehouse": "50",
+      "batch": "100006145575",
+      "source_warehouse": "61",
+      "qty": 615,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 13,
+      "stock_code": "3405350001",
+      "target_warehouse": "50",
+      "batch": "999900004488",
+      "source_warehouse": "01",
+      "qty": 497,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 14,
+      "stock_code": "3405360001",
+      "target_warehouse": "50",
+      "batch": "999900002815",
+      "source_warehouse": "61",
+      "qty": 75,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 15,
+      "stock_code": "3405360001",
+      "target_warehouse": "50",
+      "batch": "100006024592",
+      "source_warehouse": "61",
+      "qty": 120,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 16,
+      "stock_code": "3407810101",
+      "target_warehouse": "50",
+      "batch": "199900015677",
+      "source_warehouse": "61",
+      "qty": 70,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 17,
+      "stock_code": "3407810101",
+      "target_warehouse": "50",
+      "batch": "100005985324",
+      "source_warehouse": "61",
+      "qty": 200,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 18,
+      "stock_code": "3407810101",
+      "target_warehouse": "50",
+      "batch": "199900015061",
+      "source_warehouse": "61",
+      "qty": 400,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 19,
+      "stock_code": "3407820101",
+      "target_warehouse": "50",
+      "batch": "199900015062",
+      "source_warehouse": "61",
+      "qty": 250,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 20,
+      "stock_code": "3407830101",
+      "target_warehouse": "50",
+      "batch": "100006014820",
+      "source_warehouse": "61",
+      "qty": 500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 21,
+      "stock_code": "3407840101",
+      "target_warehouse": "50",
+      "batch": "100006005711",
+      "source_warehouse": "61",
+      "qty": 500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 22,
+      "stock_code": "3407880001",
+      "target_warehouse": "50",
+      "batch": "999900001668",
+      "source_warehouse": "61",
+      "qty": 200,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 23,
+      "stock_code": "3423020001",
+      "target_warehouse": "50",
+      "batch": "999900004498",
+      "source_warehouse": "01",
+      "qty": 34,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 24,
+      "stock_code": "3423130001",
+      "target_warehouse": "50",
+      "batch": "999900004385",
+      "source_warehouse": "01",
+      "qty": 400,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 25,
+      "stock_code": "3423140001",
+      "target_warehouse": "50",
+      "batch": "900002994643",
+      "source_warehouse": "61",
+      "qty": 230,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 26,
+      "stock_code": "3447230001",
+      "target_warehouse": "62",
+      "batch": "900002965733",
+      "source_warehouse": "61",
+      "qty": 1310,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 27,
+      "stock_code": "3447270001",
+      "target_warehouse": "62",
+      "batch": "999900002763",
+      "source_warehouse": "61",
+      "qty": 100,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 28,
+      "stock_code": "3447270001",
+      "target_warehouse": "62",
+      "batch": "999900001722",
+      "source_warehouse": "61",
+      "qty": 500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 29,
+      "stock_code": "3447270001",
+      "target_warehouse": "62",
+      "batch": "900002900191",
+      "source_warehouse": "61",
+      "qty": 1203,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 30,
+      "stock_code": "3447510001",
+      "target_warehouse": "62",
+      "batch": "900002999886",
+      "source_warehouse": "61",
+      "qty": 46,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 31,
+      "stock_code": "3447520001",
+      "target_warehouse": "62",
+      "batch": "900002985139",
+      "source_warehouse": "61",
+      "qty": 964,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 32,
+      "stock_code": "3447530001",
+      "target_warehouse": "62",
+      "batch": "999900004514",
+      "source_warehouse": "01",
+      "qty": 420,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 33,
+      "stock_code": "3447530001",
+      "target_warehouse": "62",
+      "batch": "900003000594",
+      "source_warehouse": "61",
+      "qty": 490,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 34,
+      "stock_code": "3447530001",
+      "target_warehouse": "62",
+      "batch": "999900002544",
+      "source_warehouse": "61",
+      "qty": 560,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 35,
+      "stock_code": "3447970001",
+      "target_warehouse": "62",
+      "batch": "999900003410",
+      "source_warehouse": "61",
+      "qty": 890,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 36,
+      "stock_code": "3447990001",
+      "target_warehouse": "62",
+      "batch": "999900002901",
+      "source_warehouse": "61",
+      "qty": 70,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 37,
+      "stock_code": "3447990001",
+      "target_warehouse": "62",
+      "batch": "100006183153",
+      "source_warehouse": "61",
+      "qty": 210,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 38,
+      "stock_code": "3447990001",
+      "target_warehouse": "62",
+      "batch": "100005975074",
+      "source_warehouse": "61",
+      "qty": 570,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 39,
+      "stock_code": "3448000001",
+      "target_warehouse": "62",
+      "batch": "100006183151",
+      "source_warehouse": "61",
+      "qty": 210,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 40,
+      "stock_code": "3448000001",
+      "target_warehouse": "62",
+      "batch": "100006165237",
+      "source_warehouse": "61",
+      "qty": 300,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 41,
+      "stock_code": "3448000001",
+      "target_warehouse": "62",
+      "batch": "100005975075",
+      "source_warehouse": "61",
+      "qty": 570,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 42,
+      "stock_code": "3451270001",
+      "target_warehouse": "62",
+      "batch": "999900001686",
+      "source_warehouse": "61",
+      "qty": 500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 43,
+      "stock_code": "3451280001",
+      "target_warehouse": "62",
+      "batch": "999900003221",
+      "source_warehouse": "61",
+      "qty": 290,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 44,
+      "stock_code": "3453530001",
+      "target_warehouse": "62",
+      "batch": "900002996654",
+      "source_warehouse": "61",
+      "qty": 600,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 45,
+      "stock_code": "3453530001",
+      "target_warehouse": "62",
+      "batch": "900002897510",
+      "source_warehouse": "61",
+      "qty": 855,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 46,
+      "stock_code": "3464230001",
+      "target_warehouse": "62",
+      "batch": "999900002997",
+      "source_warehouse": "61",
+      "qty": 20,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 47,
+      "stock_code": "3464670001",
+      "target_warehouse": "62",
+      "batch": "900002989157",
+      "source_warehouse": "61",
+      "qty": 50,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 48,
+      "stock_code": "3464670001",
+      "target_warehouse": "62",
+      "batch": "900002998555",
+      "source_warehouse": "61",
+      "qty": 1000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 49,
+      "stock_code": "3464730001",
+      "target_warehouse": "62",
+      "batch": "999900003520",
+      "source_warehouse": "61",
+      "qty": 100,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 50,
+      "stock_code": "3465830001",
+      "target_warehouse": "62",
+      "batch": "999900002864",
+      "source_warehouse": "61",
+      "qty": 650,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 51,
+      "stock_code": "3465960101",
+      "target_warehouse": "62",
+      "batch": "900002997933",
+      "source_warehouse": "61",
+      "qty": 59,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 52,
+      "stock_code": "3465960101",
+      "target_warehouse": "62",
+      "batch": "900002997930",
+      "source_warehouse": "61",
+      "qty": 352,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 53,
+      "stock_code": "3465990001",
+      "target_warehouse": "62",
+      "batch": "999900002982",
+      "source_warehouse": "61",
+      "qty": 400,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 54,
+      "stock_code": "5100630051",
+      "target_warehouse": "62",
+      "batch": "999900002368",
+      "source_warehouse": "61",
+      "qty": 669,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 55,
+      "stock_code": "7100060051",
+      "target_warehouse": "62",
+      "batch": "900002991674",
+      "source_warehouse": "61",
+      "qty": 1489,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 56,
+      "stock_code": "7100060051PA",
+      "target_warehouse": "62",
+      "batch": "100006083597",
+      "source_warehouse": "61",
+      "qty": 24500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 57,
+      "stock_code": "7101130051",
+      "target_warehouse": "62",
+      "batch": "900003001800",
+      "source_warehouse": "61",
+      "qty": 2000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 58,
+      "stock_code": "7109830051PD",
+      "target_warehouse": "62",
+      "batch": "100006167735",
+      "source_warehouse": "61",
+      "qty": 2000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 59,
+      "stock_code": "7150110001",
+      "target_warehouse": "62",
+      "batch": "999900002062",
+      "source_warehouse": "61",
+      "qty": 3000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 60,
+      "stock_code": "7150110001",
+      "target_warehouse": "62",
+      "batch": "900002918838",
+      "source_warehouse": "61",
+      "qty": 4000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 61,
+      "stock_code": "7150150001",
+      "target_warehouse": "62",
+      "batch": "999900002111",
+      "source_warehouse": "61",
+      "qty": 1900,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 62,
+      "stock_code": "7150180001",
+      "target_warehouse": "62",
+      "batch": "999900002208",
+      "source_warehouse": "61",
+      "qty": 7700,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 63,
+      "stock_code": "7150200001",
+      "target_warehouse": "50",
+      "batch": "999900002608",
+      "source_warehouse": "61",
+      "qty": 8000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 64,
+      "stock_code": "7150780201",
+      "target_warehouse": "50",
+      "batch": "900002908864",
+      "source_warehouse": "61",
+      "qty": 200,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 65,
+      "stock_code": "7151480001",
+      "target_warehouse": "62",
+      "batch": "900002917491",
+      "source_warehouse": "61",
+      "qty": 200,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 66,
+      "stock_code": "7151480001",
+      "target_warehouse": "62",
+      "batch": "999900002262",
+      "source_warehouse": "61",
+      "qty": 550,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 67,
+      "stock_code": "7156770001",
+      "target_warehouse": "62",
+      "batch": "999900002139",
+      "source_warehouse": "61",
+      "qty": 12000,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 68,
+      "stock_code": "7156770001",
+      "target_warehouse": "62",
+      "batch": "999900002103",
+      "source_warehouse": "61",
+      "qty": 18500,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 69,
+      "stock_code": "7200260001",
+      "target_warehouse": "50",
+      "batch": "999900005354",
+      "source_warehouse": "61",
+      "qty": 1,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 70,
+      "stock_code": "7200260001",
+      "target_warehouse": "50",
+      "batch": "999900002280",
+      "source_warehouse": "61",
+      "qty": 499,
+      "bin": "01",
+      "status": "READY"
+    },
+    {
+      "step": 71,
+      "stock_code": "7200260001",
+      "target_warehouse": "62",
+      "batch": "900002997924",
+      "source_warehouse": "61",
+      "qty": 989,
+      "bin": "01",
+      "status": "READY"
+    }
+  ]
+}

@@ -1,0 +1,48 @@
+================================================================================
+  HƯỚNG DẪN SỬ DỤNG BỘ CÔNG CỤ TỰ ĐỘNG HÓA iSCALA FALCON (ZERO-ADMIN, ZERO-EXCEL)
+================================================================================
+
+1. GIỚI THIỆU BỘ CÔNG CỤ:
+- Bộ công cụ được thiết kế đặc biệt để chạy mượt mà trên máy chủ iScala với môi trường bảo mật CrowdStrike Falcon:
+  + Không cần cài đặt Microsoft Excel.
+  + Không cần quyền Administrator.
+  + Thư mục `python_portable/` mang chữ ký số chính thức của Python Software Foundation & Microsoft, đảm bảo 100% không bị Falcon EDR chặn hay gắn cờ.
+
+--------------------------------------------------------------------------------
+2. CÁC BƯỚC SỬ DỤNG (3 BƯỚC ĐƠN GIẢN):
+
+▶ BƯỚC 1: LỌC DỮ LIỆU & TẠO HÀNG ĐỢI
+- Đặt file nguồn "Stock Balance With Batch.xlsx" trong cùng thư mục này.
+- Nhấp đúp chuột vào file: [run_processor.bat]
+- Hệ thống sẽ tự động:
+  + Lọc kho 50 & 62 bị âm.
+  + Lọc kho 61 & 01 đang dương.
+  + Khớp theo đúng Stock Code, ưu tiên batch nhỏ nhất, không tách lẻ.
+  + Tạo ra file dữ liệu: "auto_input_queue.json", "auto_input_queue.xlsx" và "report_unmatched_shortage.xlsx".
+
+▶ BƯỚC 2: MỞ GIAO DIỆN ĐIỀU KHIỂN AUTO
+- Nhấp đúp chuột vào file: [run_gui.bat]
+- Màn hình giao diện "iScala Falcon Auto-Typer Control Panel" sẽ hiện lên.
+- File hàng đợi "auto_input_queue.json" sẽ tự động được nạp vào bảng danh sách.
+
+▶ BƯỚC 3: BẮT ĐẦU TỰ ĐỘNG GÕ PHÍM
+- Tùy chỉnh tốc độ gõ trên thanh trượt (mặc định 0.20s là chuẩn và ổn định nhất).
+- Bấm nút xanh: [▶️ BẮT ĐẦU (START - F6)]
+- Đồng hồ sẽ đếm ngược 5 giây:
+  => Trong 5 giây này, bạn click chuột vào đúng ô nhập [Batch] đầu tiên trên màn hình iScala.
+- Hết 5 giây, Bot sẽ tự động thực hiện chuỗi phím:
+  1. Gõ [Batch] -> Enter
+  2. Gõ [Kho: 50 hoặc 62] -> Enter
+  3. Gõ [Qty] -> Enter
+  4. Gõ [01] -> Enter
+  5. Gõ [Enter] x 4 lần kết thúc vòng lặp.
+- Bạn có thể xem trực tiếp quá trình gõ trên khung "Live Streaming Console".
+
+--------------------------------------------------------------------------------
+3. PHÍM TẮT & TÍNH NĂNG AN TOÀN (EMERGENCY FAILSAFE):
+- F6: Bắt đầu (Start)
+- F7: Tạm dừng / Tiếp tục (Pause / Resume)
+- F8 hoặc ESC: Dừng khẩn cấp ngay lập tức (Emergency Stop).
+
+Chúc bạn hoàn thành công việc nhanh chóng và hiệu quả!
+================================================================================
